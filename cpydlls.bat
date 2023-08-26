@@ -1,0 +1,1 @@
+xcopy /s/y dlls\* bin\Debug\
