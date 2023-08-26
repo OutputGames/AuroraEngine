@@ -1,1 +1,1 @@
-xcopy /s/y dlls\* bin\Debug\
+xcopy /s/y dlls\* bin\%1\
