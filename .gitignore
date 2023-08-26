@@ -4,7 +4,6 @@ generated/
 enc_temp_folder/
 *.sln
 Makefile
-*.ini
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
