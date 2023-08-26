@@ -7,6 +7,13 @@ name: MSBuild
 
 on:
   workflow_dispatch:
+    inputs:
+      cfg:
+        description: "Build Configuration"
+        default: "Release"
+      platform:
+        description: "Build Platform"
+        default: "x64"
 
 env:
   # Path to the solution file relative to the root of the project.
@@ -15,7 +22,8 @@ env:
   # Configuration type to build.
   # You can convert this to a build matrix if you need coverage of multiple configuration types.
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
+  BUILD_CONFIGURATION: github.event.inputs.cfg
+  BUILD_PLATFORM: github.event.inputs.platform
 
 permissions:
   contents: read
@@ -40,4 +48,4 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:platform=${{env.BUILD_PLATFORM}}  ${{env.SOLUTION_FILE_PATH}}
