@@ -83,6 +83,7 @@ project "AuroraEngine"
 
     libdirs {
         "lib\\",
+        "lib\\glfw\\lib-vc2022"
     }
             --for 32 bit use these library paths
     filter "architecture:x86"
@@ -96,11 +97,7 @@ project "AuroraEngine"
     libdirs { 
         ".\\lib\\glew\\x64\\",
         ".\\lib\\assimp\\x64\\"
-    }
-
-    libdirs { 
-        "lib\\glfw\\lib-vc2022"
-    }    
+    } 
 
    filter "configurations:Debug"
         defines { "DEBUG" }
