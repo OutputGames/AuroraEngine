@@ -97,13 +97,10 @@ project "AuroraEngine"
         ".\\lib\\glew\\x64\\",
         ".\\lib\\assimp\\x64\\"
     }
-    
 
-    if (_ACTION == "vs2022") then
-        libdirs { 
-            "lib\\glfw\\lib-vc2022"
-        }    
-    end
+    libdirs { 
+        "lib\\glfw\\lib-vc2022"
+    }    
 
    filter "configurations:Debug"
         defines { "DEBUG" }
