@@ -1,1 +1,0 @@
-xcopy /s/y dlls\* bin\%1\
