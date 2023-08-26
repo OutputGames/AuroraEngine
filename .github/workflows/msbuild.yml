@@ -19,7 +19,7 @@ on:
         default: false
       relname:
         description: "Release Name"
-        default: ${{ github.event.head_commit.message }}
+        default: "new release"
 
 env:
   # Path to the solution file relative to the root of the project.
