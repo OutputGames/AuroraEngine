@@ -30,6 +30,8 @@ env:
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: ${{github.event.inputs.cfg}}
   BUILD_PLATFORM: ${{github.event.inputs.platform}}
+  ADDREL: ${{github.event.inputs.addrel}}
+  RELNAME: ${{github.event.inputs.relname}}
 
 permissions:
   contents: read
@@ -69,7 +71,7 @@ jobs:
           dest:  bin\${{env.BUILD_CONFIGURATION}}\build.zip
 
     - name: Upload a Build Artifact
-      if: github.events.inputs.addrel == 'false'
+      if: ${{env.ADDREL == 'false'}}
       uses: actions/upload-artifact@v3.1.2
       with:
         # Artifact name
@@ -78,18 +80,18 @@ jobs:
         path: ./bin/${{env.BUILD_CONFIGURATION}}/build.zip
 
     - name: Release
-      if: github.events.inputs.addrel == 'true'
+      if: ${{env.ADDREL == 'true'}}
       id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.run_number }}
-        release_name: ${{ github.events.inputs.relname }}
+        release_name: ${{env.RELNAME}}
         draft: false
         prerelease: false
     - name: Upload Release Asset
-      if: github.events.inputs.addrel == 'true'
+      if: ${{env.ADDREL == 'true'}}
       id: upload-release-asset 
       uses: actions/upload-release-asset@v1
       env:
