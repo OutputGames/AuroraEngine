@@ -1,0 +1,10 @@
+^C:\USERS\CHRIS\DOWNLOADS\GLM-0.9.9.8\GLM\GLM\CMAKEFILES\9CF98DE998D5FE640825726A8A7A1AE2\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/chris/Downloads/glm-0.9.9.8/glm/glm -BC:/Users/chris/Downloads/glm-0.9.9.8/glm/glm --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/chris/Downloads/glm-0.9.9.8/glm/glm/Project.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

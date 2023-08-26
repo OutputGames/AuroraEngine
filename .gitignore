@@ -9,4 +9,3 @@ Makefile
 *.vcxproj.filters
 *.vcxproj.user
 *cmake*
-x64/
