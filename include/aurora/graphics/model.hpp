@@ -95,11 +95,11 @@ struct Material
         };
     };
 
-    std::vector<std::pair<string, UniformData*>> uniforms;
+    std::map<std::string, UniformData*> uniforms;
 
-    UniformData* GetUniform(string name)
+    UniformData* GetUniform(std::string name)
     {
-	    for (std::pair<string, UniformData*> uniform : uniforms)
+	    for (std::pair<std::string, UniformData*> uniform : uniforms)
 	    {
 		    if (uniform.first == name)
 		    {
@@ -138,39 +138,45 @@ struct Material
             /*
             switch (type) {
             case GL_BOOL:
-                cout << name << " is bool";
+                std::cout << name << " is bool";
                 break;
             case GL_INT:
-                cout << name << " is int";
+                std::cout << name << " is int";
                 break;
             case GL_FLOAT:
-                cout << name << " is float";
+                std::cout << name << " is float";
                 break;
             case GL_FLOAT_VEC2:
-                cout << name << " is vec2";
+                std::cout << name << " is vec2";
                 break;
             case GL_FLOAT_VEC3:
-                cout << name << " is vec3";
+                std::cout << name << " is vec3";
                 break;
             case GL_FLOAT_VEC4:
-                cout << name << " is vec4";
+                std::cout << name << " is vec4";
                 break;
             case GL_FLOAT_MAT2:
-                cout << name << " is mat2";
+                std::cout << name << " is mat2";
                 break;
             case GL_FLOAT_MAT3:
-                cout << name << " is mat3";
+                std::cout << name << " is mat3";
                 break;
             case GL_FLOAT_MAT4:
-                cout << name << " is mat4";
+                std::cout << name << " is mat4";
                 break;
             }
             */
 
-            //cout << std::endl;
+            //std::cout << std::endl;
 
-            uniforms.push_back({ name, dat });
+            uniforms.insert({ name, dat });
         }
+    }
+
+    void LoadShader(Shader* s)
+    {
+        shader = s;
+        ProcessUniforms();
     }
 
 	Shader* shader;
@@ -184,8 +190,8 @@ struct Mesh
 	{
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
-		vector<Texture> textures;
-        string name;
+		std::vector<Texture> textures;
+        std::string name;
 	};
 
 	MeshData* data;
@@ -193,6 +199,7 @@ struct Mesh
 	void Draw();
 
 	static Mesh* Upload(MeshData* data);
+    static Mesh* Load(std::string path);
 
 	Material* material;
 
@@ -202,11 +209,13 @@ struct Model
 {
 	std::vector<Mesh*> meshes;
 
+    std::string path;
+
 	void Draw();
 
 	static Model* LoadModel(std::string path);
 
-    map<string, BoneInfo> m_BoneInfoMap; //
+    std::map<std::string, BoneInfo> m_BoneInfoMap; //
     int m_BoneCounter = 0;
 
     auto& GetBoneInfoMap()
@@ -222,8 +231,7 @@ struct Model
     {
 	    for (int i = 0; i < meshes.size(); ++i)
 	    {
-            meshes[i]->material->shader = shader;
-            meshes[i]->material->ProcessUniforms();
+            meshes[i]->material->LoadShader(shader);
 	    }
     }
 

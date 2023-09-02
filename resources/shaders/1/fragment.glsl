@@ -1,114 +1,37 @@
 #version 330 core
 out vec4 FragColor;
-in vec2 TexCoords;
-in vec3 WorldPos;
-in vec3 Normal;
-in vec4 glvi;
 
-// material parameters
-uniform vec3 albedo;
-uniform float metallic;
-uniform float roughness;
-uniform float ao;
+in vec3 TexCoords;
 
-// lights
-uniform vec3 lightPositions[4];
-uniform vec3 lightColors[4];
-uniform bool lightEnabled[4];
+struct Material {
+	samplerCube texture_cubemap;
+};
 
-uniform vec3 camPos;
-
-const float PI = 3.14159265359;
-// ----------------------------------------------------------------------------
-float DistributionGGX(vec3 N, vec3 H, float roughness)
+// Crude sky colour function for background light
+vec3 GetEnvironmentLight(vec3 p)
 {
-    float a = roughness*roughness;
-    float a2 = a*a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH*NdotH;
-
-    float nom   = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-
-    return nom / denom;
-}
-// ----------------------------------------------------------------------------
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float r = (roughness + 1.0);
-    float k = (r*r) / 8.0;
-
-    float nom   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-
-    return nom / denom;
-}
-// ----------------------------------------------------------------------------
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-    return ggx1 * ggx2;
-}
-// ----------------------------------------------------------------------------
-vec3 fresnelSchlick(float cosTheta, vec3 F0)
-{
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-// ----------------------------------------------------------------------------
-
-
-float rand(vec2 c){
-	return fract(sin(dot(c.xy ,vec2(12.9898,78.233))) * 43758.5453);
+			
+	vec4 GroundColour = vec4(0.6);
+	vec4 SkyColourHorizon=vec4(1);
+	vec4 SkyColourZenith=vec4(0.65,0.85,1,1);
+	float SunFocus=01;
+	float SunIntensity=0;
+	vec3 SunPos=vec3(10,10,10);
+						
+	float skyGradientT = pow(smoothstep(0, 0.4, p.y), 0.35);
+	float groundToSkyT = smoothstep(-0.01, 0, p.y);
+	vec3 skyGradient = mix(vec3(SkyColourHorizon), vec3(SkyColourZenith), skyGradientT);
+	float sun = pow(max(0, dot(p, SunPos)), SunFocus) * SunIntensity;
+	// Combine ground, sky, and sun
+	vec3 composite = mix(vec3(GroundColour), skyGradient, groundToSkyT) + sun * float(groundToSkyT>=1);
+	return composite;
 }
 
-float noise(vec2 p, float freq ){
-	float unit = 100/freq;
-	vec2 ij = floor(p/unit);
-	vec2 xy = mod(p,unit)/unit;
-	//xy = 3.*xy*xy-2.*xy*xy*xy;
-	xy = .5*(1.-cos(PI*xy));
-	float a = rand((ij+vec2(0.,0.)));
-	float b = rand((ij+vec2(1.,0.)));
-	float c = rand((ij+vec2(0.,1.)));
-	float d = rand((ij+vec2(1.,1.)));
-	float x1 = mix(a, b, xy.x);
-	float x2 = mix(c, d, xy.x);
-	return mix(x1, x2, xy.y);
-}
-
-float pNoise(vec2 p, int res){
-	float persistance = .5;
-	float n = 0.;
-	float normK = 0.;
-	float f = 4.;
-	float amp = 1.;
-	int iCount = 0;
-	for (int i = 0; i<50; i++){
-		n+=amp*noise(p, f);
-		f*=2.;
-		normK+=amp;
-		amp*=persistance;
-		if (iCount == res) break;
-		iCount++;
-	}
-	float nf = n/normK;
-	return nf*nf*nf*nf;
-}
+uniform Material material;
 
 void main()
-{	
-	vec2 st = gl_PointCoord;
-
-	float vi = glvi.x/900000;
-
-	float mixValue = distance(st, vec2(0, 1));
-
-	vec3 c = mix(vec3(1.0,0,0), vec3(0,0,1), vi);
-
-    FragColor = vec4(c, 1.0);
+{    
+    FragColor = texture(material.texture_cubemap, TexCoords);
+    
+    //FragColor = vec4(GetEnvironmentLight(TexCoords),1.0);
 }

@@ -9,6 +9,7 @@ struct RenderData
 {
     Mesh* mesh;
     mat4 matrix = mat4(1.0);
+    bool castShadow = false, useDepthMask=true, cullBack=false;
 };
 
 struct RenderMgr {
@@ -21,7 +22,7 @@ struct RenderMgr {
     static glm::vec2 GetWindowSize();
     static glm::vec2 GetSceneWinSize();
     static bool CheckMouseInputs();
-    static vector<RenderData*> renderObjs;
+    static std::vector<RenderData*> renderObjs;
 };
 
 struct FrameBuffer {

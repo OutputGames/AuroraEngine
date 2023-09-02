@@ -7,7 +7,11 @@ struct Texture
 {
     unsigned int ID;
 
-    std::string type, path;
+    std::string type;
+
+    bool isCubemap;
+
+    std::string path;
 
     int height, width;
 
@@ -20,7 +24,8 @@ struct Texture
 struct CubemapTexture : Texture
 {
 
-    static CubemapTexture Load(vector<std::string> faces);
+    static CubemapTexture Load(std::vector<std::string> faces);
+    static CubemapTexture LoadFromPath(std::string p);
 
 };
 

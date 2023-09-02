@@ -20,8 +20,21 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/rotate_vector.hpp>
+
+#include "json.hpp"
+
+#include "imgui/ImGuiFileDialog.h"
+#include "imgui/ImGuizmo.h"
+#include "imgui/imgui_internal.h"
+#include "imgui/imgui_stdlib.h"
+#include "imgui/TextEditor.h"
+#include "imgui/icons/IconsFontAwesome6.h"
+
+#include "engine/log.hpp"
+
 using namespace glm;
 using namespace std;
+using namespace nlohmann;
 
 #define flt (float)
 

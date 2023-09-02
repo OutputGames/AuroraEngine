@@ -11,7 +11,7 @@ class Billboard : public Component {
     CLASS_DECLARATION(Billboard)
 public:
     Billboard(std::string&& initialValue)
-        : Component(std::move(initialValue)) {
+        : Component(move(initialValue)) {
     }
 
     Billboard() = default;
@@ -21,13 +21,14 @@ public:
     void Unload() override;
     void EngineRender() override;
 
+    std::string PrintToJSON() override;
+    void LoadFromJSON(nlohmann::json data) override;
+
     Texture texture;
 
-    Camera* cam;
+    std::string icon = ICON_FA_IMAGE;
 
-    string icon = ICON_FA_IMAGE;
-
-    string GetIcon() override;
+    std::string GetIcon() override;
 
     vec3 color;
 

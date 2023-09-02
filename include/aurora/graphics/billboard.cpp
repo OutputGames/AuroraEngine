@@ -1,16 +1,19 @@
 #include "billboard.hpp"
 
+#include "imgui/imgui.h"
 #include "rendering/camera.hpp"
 #include "rendering/render.hpp"
 #include "rendering/renderer.hpp"
 
 CLASS_DEFINITION(Component, Billboard)
 
+using namespace nlohmann;
+
 void Billboard::Init()
 {
 
     /*
-	static const vector<GLfloat> vbd = {
+	static const std::vector<GLfloat> vbd = {
 	 -0.5f, -0.5f, 0.0f,
 	  0.5f, -0.5f, 0.0f,
 	 -0.5f,  0.5f, 0.0f,
@@ -56,9 +59,9 @@ void Billboard::Init()
 
 
     
-    Model* model = Model::LoadModel("resources/models/plane.fbx");
+    Model* model = Model::LoadModel("editor/models/plane.fbx");
 
-    Shader * shader = new Shader("resources/shaders/2/");
+    Shader * shader = new Shader("editor/shaders/2/");
 
     model->SetShader(shader);
 
@@ -92,9 +95,6 @@ void Billboard::Update()
     //mat = glm::lookAt(entity->transform->position, cam->position, cam->up);
 
     //entity->transform->CopyTransforms(mat);
-
-
-
 }
 
 void Billboard::Unload()
@@ -103,9 +103,67 @@ void Billboard::Unload()
 
 void Billboard::EngineRender()
 {
+
+    std::string s = texture.path;
+
+    ImGui::InputText("Image Path", &s);
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("..."))
+    {
+        ImGuiFileDialog::Instance()->OpenDialog("engine_cmp_dlg", "Open a File", ".png,.jpg", ".");
+    }
+
+    // display
+    if (ImGuiFileDialog::Instance()->Display("engine_cmp_dlg"))
+    {
+        // action if OK
+        if (ImGuiFileDialog::Instance()->IsOk())
+        {
+            std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+            std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
+
+            texture.Unload();
+
+            texture = Texture::Load(filePathName);
+
+            texture.isCubemap = false;
+
+            // action
+        }
+
+        // close
+        ImGuiFileDialog::Instance()->Close();
+    }
 }
 
-string Billboard::GetIcon()
+std::string Billboard::PrintToJSON()
+{
+
+    json j;
+
+    j["texture_path"] = texture.path;
+
+    for (int i = 0; i < 3; ++i)
+    {
+        j["color"][i] = color[i];
+    }
+
+    return j.dump();
+}
+
+void Billboard::LoadFromJSON(nlohmann::json data)
+{
+	for (int i = 0; i < 3; ++i)
+	{
+        color[i] = data["color"][i];
+	}
+
+    texture = Texture::Load(data["texture_path"]);
+}
+
+std::string Billboard::GetIcon()
 {
     return icon;
 }

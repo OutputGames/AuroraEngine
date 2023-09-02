@@ -4,22 +4,22 @@
 
 void Mesh::Draw()
 {
-    std::vector<std::pair<string, int>> typenums;
+    std::vector<std::pair<std::string, int>> typenums;
     for (unsigned int i = 0; i < material->textures.size(); i++)
     {
         glActiveTexture(GL_TEXTURE0 + i); // activate proper texture unit before binding
         // retrieve texture number (the N in diffuse_textureN)
         std::string number;
-        string name = material->textures[i].type;
+        std::string name = material->textures[i].type;
         bool couldFind = false;
         if (typenums.size() > 0) {
             int ctr = 0;
-            for (std::pair<string, int> typenum : typenums)
+            for (std::pair<std::string, int> typenum : typenums)
             {
                 if (typenum.first == name)
                 {
                     typenums[ctr].second += 1;
-                    number = std::to_string(typenums[ctr].second);
+                    number = to_string(typenums[ctr].second);
                     couldFind = true;
                 }
                 ctr++;
@@ -35,12 +35,22 @@ void Mesh::Draw()
             number = "0";
         }
 
-        material->shader->setInt(("material." + name + number).c_str(), i);
-        glBindTexture(GL_TEXTURE_2D, material->textures[i].ID);
+        std::string uniform = "material." + name + number;
+
+        material->shader->setInt((uniform).c_str(), i);
+
+        GLenum textureTarget = GL_TEXTURE_2D;
+
+        if (material->textures[i].isCubemap)
+        {
+            textureTarget = GL_TEXTURE_CUBE_MAP;
+        }
+
+        glBindTexture(textureTarget, material->textures[i].ID);
     }
     glActiveTexture(GL_TEXTURE0);
 
-    for (std::pair<string, Material::UniformData*> uniform : material->uniforms)
+    for (std::pair<std::string, Material::UniformData*> uniform : material->uniforms)
     {
         GLenum type = uniform.second->type;
 
@@ -128,6 +138,13 @@ Mesh* Mesh::Upload(MeshData* data)
 	return mesh;
 }
 
+Mesh* Mesh::Load(std::string path)
+{
+    Model* temp_mdl = Model::LoadModel(path);
+
+    return temp_mdl->meshes[0];
+}
+
 void Model::Draw()
 {
 	for (int i = 0; i < meshes.size(); ++i)
@@ -136,25 +153,25 @@ void Model::Draw()
 	}
 }
 
-vector<Texture> textures_loaded;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
+std::vector<Texture> textures_loaded;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
 
-vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, string typeName, string modelPath)
+std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, std::string modelPath)
 {
-    vector<Texture> textures;
+    std::vector<Texture> textures;
     for (unsigned int i = 0; i < mat->GetTextureCount(type); i++)
     {
         aiString str;
         mat->GetTexture(type, i, &str);
 
-        string directory;
-        string path;
-        const size_t last_slash_idx = modelPath.rfind('/');
+        std::string directory;
+        std::string path;
+        const std::size_t last_slash_idx = modelPath.rfind('/');
         if (std::string::npos != last_slash_idx)
         {
             directory = modelPath.substr(0, last_slash_idx);
         }
 
-        filesystem::path spath(str.C_Str());
+        std::filesystem::path spath(str.C_Str());
 
         std::string spaths{ spath.filename().u8string() };
 
@@ -166,7 +183,7 @@ vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, string
         bool skip = false;
         for (unsigned int j = 0; j < textures_loaded.size(); j++)
         {
-            if (std::strcmp(textures_loaded[j].path.data(), path.c_str()) == 0)
+            if (strcmp(textures_loaded[j].path.data(), path.c_str()) == 0)
             {
                 textures.push_back(textures_loaded[j]);
                 skip = true; // a texture with the same filepath has already been loaded, continue to next one. (optimization)
@@ -184,12 +201,12 @@ vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, string
     return textures;
 }
 
-Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, string mpath)
+Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string mpath)
 {
     // data to fill
-    vector<Vertex> vertices;
-    vector<unsigned int> indices;
-    vector<Texture> textures;
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
 
     // walk through each of the mesh's vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++)
@@ -198,7 +215,7 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, string mpath
 
         
 
-        glm::vec3 vector; // we declare a placeholder vector since assimp uses its own vector class that doesn't directly convert to glm's vec3 class so we transfer the data to this placeholder glm::vec3 first.
+        glm::vec3 vector; // we declare a placeholder std::vector since assimp uses its own std::vector class that doesn't directly convert to glm's vec3 class so we transfer the data to this placeholder glm::vec3 first.
         // positions
         vector.x = mesh->mVertices[i].x;
         vector.y = mesh->mVertices[i].y;
@@ -247,7 +264,7 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, string mpath
     for (unsigned int i = 0; i < mesh->mNumFaces; i++)
     {
         aiFace face = mesh->mFaces[i];
-        // retrieve all indices of the face and store them in the indices vector
+        // retrieve all indices of the face and store them in the indices std::vector
         for (unsigned int j = 0; j < face.mNumIndices; j++)
             indices.push_back(face.mIndices[j]);
     }
@@ -261,10 +278,10 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, string mpath
     // normal: texture_normalN
 
     // 1. diffuse maps
-    vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", mpath);
+    std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", mpath);
     textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
     // 2. specular maps
-    vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", mpath);
+    std::vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", mpath);
     textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
     // 3. normal maps
     std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", mpath);
@@ -288,7 +305,7 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, string mpath
     return Mesh::Upload(data);
 }
 
-void processNode(aiNode* node, const aiScene* scene, Model* model, string mpath)
+void processNode(aiNode* node, const aiScene* scene, Model* model, std::string mpath)
 {
     // process all the node's meshes (if any)
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -310,12 +327,14 @@ Model* Model::LoadModel(std::string path)
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
-        cout << "ERROR::ASSIMP::" << import.GetErrorString() << endl;
+        std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
         return nullptr;
     }
     //directory = path.substr(0, path.find_last_of('/'));
 
     Model* model = new Model();
+
+    model->path = path;
 
     processNode(scene->mRootNode, scene, model, path);
 

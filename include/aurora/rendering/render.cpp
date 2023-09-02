@@ -8,13 +8,10 @@
 #include "camera.hpp"
 #include "renderer.hpp"
 #include "engine/entity.hpp"
+#include "engine/log.hpp"
+#include "engine/project.hpp"
 #include "graphics/lighting.hpp"
 #include "graphics/model.hpp"
-#include "imgui/ImGuizmo.h"
-#include "imgui/imgui_internal.h"
-#include "imgui/imgui_stdlib.h"
-#include "imgui/TextEditor.h"
-#include "imgui/icons/IconsFontAwesome6.h"
 #include "utils/filesystem.hpp"
 
 unsigned int SCR_WIDTH = 800;
@@ -24,8 +21,8 @@ GLFWwindow* window;
 
 bool mouse_cond, selectedEntity, selectedFile;
 
-filesystem::path selected_file;
-string filetype, filedata;
+std::filesystem::path selected_file;
+std::string filetype, filedata;
 
 TextureColorBuffer* bfr;
 
@@ -33,13 +30,16 @@ TextEditor* text_editor;
 
 ImVec2 oldGS;
 
-std::uint32_t selected_id;
+uint32_t selected_id;
+
+bool fidopen=false;
+int fdtype;
 
 mat4 view, projection;
 
-vector<RenderData*> RenderMgr::renderObjs;
+std::vector<RenderData*> RenderMgr::renderObjs;
 
-static std::map<string, Texture> textureCache = {
+static std::map<std::string, Texture> textureCache = {
 };
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -160,6 +160,8 @@ void RenderMgr::InitGraphicsDevice()
     view = camera->GetViewMatrix();
 
     text_editor = new TextEditor;
+
+    Logger::Log("Initialized graphics device. ", Logger::INFO, "GFX");
 }
 
 void RenderMgr::UpdateGraphicsDevice()
@@ -172,6 +174,17 @@ void RenderMgr::UpdateGraphicsDevice()
 
     camera->up = vec3(view[1]);
     camera->right = vec3(view[0]);
+    camera->position = vec3(view[3]);
+
+    mat4 tempMat = inverse(view);
+
+    camera->position = tempMat[3];
+
+    if (Project::ProjectLoaded())
+    {
+        //Scene::GetScene()->entity_mgr->entities[0]->transform->position = camera->position;
+    }
+
 
     bfr->Bind();
 
@@ -196,11 +209,39 @@ void RenderMgr::UpdateGraphicsDevice()
 
     projection = camera->GetProjectionMatrix(aspect);
 
+
+    if (Project::ProjectLoaded()) {
+        for (int i = 0; i < Scene::GetScene()->light_mgr->lights.size(); ++i)
+        {
+            Light* l = Scene::GetScene()->light_mgr->lights[i];
+            l->CalcShadowMap();
+        }
+    }
+
+    bfr->Bind();
+
+    glViewport(0, 0, oldGS.x, oldGS.y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     for (RenderData* render_obj : renderObjs)
     {
-        Shader* rshader = render_obj->mesh->material->shader;
-        rshader->reload();
-        rshader->use();
+        if (render_obj->useDepthMask == false) {
+            glDepthMask(GL_FALSE);
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+        }
+
+        if (render_obj->cullBack == false)
+        {
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+            glFrontFace(GL_CW);
+        }
+
+        if (render_obj->mesh->material->shader) {
+            Shader* rshader = render_obj->mesh->material->shader;
+            rshader->reload();
+            rshader->use();
+        }
         if (render_obj->mesh->material->GetUniform("model"))
 			render_obj->mesh->material->GetUniform("model")->m4 = render_obj->matrix;
         if (render_obj->mesh->material->GetUniform("view"))
@@ -227,10 +268,15 @@ void RenderMgr::UpdateGraphicsDevice()
         }
 
         if (render_obj->mesh->material->GetUniform("lights[0].position")) {
-            LightingMgr::EditMaterial(render_obj->mesh->material);
+            Scene::GetScene()->light_mgr->EditMaterial(render_obj->mesh->material);
+            bfr->Bind();
         }
 
         render_obj->mesh->Draw();
+
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS); // set depth function back to default
+        glDisable(GL_CULL_FACE);
     } 
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -354,547 +400,835 @@ void RenderMgr::RenderEngineSpace()
     ImGuiID dockspace_id = ImGui::GetID("EngineDS");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
 
-    // If you copied this demo function into your own code and removed ImGuiWindowFlags_MenuBar at the top of the function,
-// you should remove the below if-statement as well.
-    if (ImGui::BeginMenuBar())
-    {
-        if (ImGui::BeginMenu("Options"))
+        // If you copied this demo function into your own code and removed ImGuiWindowFlags_MenuBar at the top of the function,
+    // you should remove the below if-statement as well.
+        if (ImGui::BeginMenuBar())
         {
-            // Disabling fullscreen would allow the window to be moved to the front of other windows,
-            // which we can't undo at the moment without finer window depth/z control.
-            ImGui::MenuItem("Fullscreen", NULL, &opt_fullscreen);
-            ImGui::MenuItem("Padding", NULL, &opt_padding);
-            ImGui::Separator();
 
-            // Display a menu item for each Dockspace flag, clicking on one will toggle its assigned flag.
-            if (ImGui::MenuItem("Flag: NoSplit", "", (dockspace_flags & ImGuiDockNodeFlags_NoSplit) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoSplit; }
-            if (ImGui::MenuItem("Flag: NoResize", "", (dockspace_flags & ImGuiDockNodeFlags_NoResize) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoResize; }
-            if (ImGui::MenuItem("Flag: NoDockingInCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_NoDockingInCentralNode) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoDockingInCentralNode; }
-            if (ImGui::MenuItem("Flag: AutoHideTabBar", "", (dockspace_flags & ImGuiDockNodeFlags_AutoHideTabBar) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_AutoHideTabBar; }
-            if (ImGui::MenuItem("Flag: PassthruCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode) != 0, opt_fullscreen)) { dockspace_flags ^= ImGuiDockNodeFlags_PassthruCentralNode; }
-            ImGui::Separator();
-
-            if (ImGui::BeginMenu("Add"))
+            if (ImGui::BeginMenu("File"))
             {
+	            if (ImGui::MenuItem("New", "Ctrl+N"))
+	            {
+                    std::cout << "made new project" << std::endl;
+	            }
 
-                if (ImGui::Selectable(ICON_FA_CUBE " Cube"))
+                if (ImGui::MenuItem("Open", "Ctrl+O"))
                 {
-                    Entity* entity = EntityMgr::CreateEntity("Cube");
-
-                    ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                    renderer->model = Model::LoadModel("resources/models/cube.fbx");
-                    Shader* shader = new Shader("resources/shaders/0/");
-                    renderer->model->SetShader(shader);
+                    std::cout << "opened new project" << std::endl;
                 }
 
-                if (ImGui::Selectable(ICON_FA_CIRCLE " Sphere"))
+                if (ImGui::MenuItem("Save", "Ctrl+S"))
                 {
-                    Entity* entity = EntityMgr::CreateEntity("Sphere");
-
-                    ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                    renderer->model = Model::LoadModel("resources/models/sphere.fbx");
-                    Shader* shader = new Shader("resources/shaders/0/");
-                    renderer->model->SetShader(shader);
-                }
-
-                if (ImGui::Selectable( "Cone"))
-                {
-                    Entity* entity = EntityMgr::CreateEntity("Cone");
-
-                    ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                    renderer->model = Model::LoadModel("resources/models/cone.fbx");
-                    Shader* shader = new Shader("resources/shaders/0/");
-                    renderer->model->SetShader(shader);
-                }
-
-                if (ImGui::Selectable("Cylinder"))
-                {
-                    Entity* entity = EntityMgr::CreateEntity("Cylinder");
-
-                    ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                    renderer->model = Model::LoadModel("resources/models/cylinder.fbx");
-                    Shader* shader = new Shader("resources/shaders/0/");
-                    renderer->model->SetShader(shader);
-                }
-
-                ImGui::Separator();
-
-                if (ImGui::Selectable(ICON_FA_LIGHTBULB " Point Light"))
-                {
-                    Entity* entity = EntityMgr::CreateEntity("Light");
-
-                    Light* light = entity->AttachComponent<Light>();
-
-                    light->color = vec3(1, 1, 1);
-                    light->power = 1000;
-                    light->enabled = true;
-
-                    entity->Init();
+                    std::cout << "saved new project" << std::endl;
                 }
 
                 ImGui::EndMenu();
             }
-            ImGui::EndMenu();
-        }
 
-        ImGui::EndMenuBar();
-    }
-
-    ImGui::End();
-
-    static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::UNIVERSAL);
-    static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::WORLD);
-
-    ImGui::Begin(ICON_FA_GAMEPAD " Scene Window");
-    {
-        // Using a Child allow to fill all the space of the window.
-        // It also alows customization
-        ImGui::BeginChild("SceneRender");
-        // Get the size of the child (i.e. the whole draw size of the windows).
-        ImVec2 wsize = ImGui::GetWindowSize();
-
-        ImVec2 wpos = ImGui::GetWindowPos();
-
-        if (wsize.x != oldGS.x && wsize.y != oldGS.y) {
-            bfr->Resize({ wsize.x, wsize.y });
-        }
-
-        oldGS = wsize;
-
-
-
-        mouse_cond = ImGui::IsWindowFocused();
-
-        // Because I use the texture from OpenGL, I need to invert the V from the UV.
-        ImGui::Image((ImTextureID)bfr->texture, wsize, ImVec2(0, 1), ImVec2(1, 0));
-
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::BeginFrame();
-        ImGuizmo::Enable(true);
-
-        ImGuizmo::SetDrawlist();
-
-        ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, wsize.x, wsize.y);
-
-        if (selectedEntity) {
-
-            glm::mat4 matrix = EntityMgr::entities[selected_id]->transform->GetMatrix();
-
-            mat4 gridMat = glm::mat4(1.0);
-
-            //ImGuizmo::DrawGrid(&view[0][0], &projection[0][0], &gridMat[0][0], 100);
-            ImGuizmo::Manipulate(&view[0][0], &projection[0][0], mCurrentGizmoOperation, mCurrentGizmoMode, &matrix[0][0]);
-            //ImGuizmo::DrawCubes(&view[0][0], &projection[0][0], &matrix[0][0], 1);
-
-
-            EntityMgr::entities[selected_id]->transform->CopyTransforms(matrix);
-        }
-
-        float viewManipulateRight = ImGui::GetWindowPos().x + wsize.x;
-        float viewManipulateTop = ImGui::GetWindowPos().y;
-
-        ImGuizmo::ViewManipulate(&view[0][0], 100.0f, ImVec2(viewManipulateRight - 128, viewManipulateTop), ImVec2(128, 128), 0x10101010);
-
-        ImVec2 window_pos = ImGui::GetWindowPos();
-        ImVec2 window_size = ImGui::GetWindowSize();
-        ImVec2 window_center = ImVec2(window_pos.x + window_size.x * 0.5f, window_pos.y + window_size.y * 0.5f);
-
-        ImGui::GetForegroundDrawList()->AddCircle(wpos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
-
-        ImGui::GetForegroundDrawList()->AddCircle({ window_pos.x + window_size.x, window_pos.y+window_size.y }, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
-
-        ImGui::EndChild();
-    }
-    ImGui::End();
-
-    ImGui::Begin(ICON_FA_LIST " Properties");
-    {
-        if (selectedEntity) {
-            Entity* entity = EntityMgr::entities[selected_id];
-
-            ImGui::Checkbox("Enabled", &entity->enabled);
-
-            ImGui::SameLine();
-
-            ImGui::InputText("Name", &entity->name);
-
-            ImGui::SameLine();
-
-            ImGui::Text(("ID: " + std::to_string(entity->id)).c_str());
-
-            if (ImGui::CollapsingHeader(ICON_FA_UP_DOWN_LEFT_RIGHT " Transform")) {
-
-                if (ImGui::IsKeyPressed((ImGuiKey)90))
-                    mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
-                if (ImGui::IsKeyPressed((ImGuiKey)69))
-                    mCurrentGizmoOperation = ImGuizmo::ROTATE;
-                if (ImGui::IsKeyPressed((ImGuiKey)82)) // r Key
-                    mCurrentGizmoOperation = ImGuizmo::SCALE;
-                if (ImGui::RadioButton("Translate", mCurrentGizmoOperation == ImGuizmo::TRANSLATE))
-                    mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
-                ImGui::SameLine();
-                if (ImGui::RadioButton("Rotate", mCurrentGizmoOperation == ImGuizmo::ROTATE))
-                    mCurrentGizmoOperation = ImGuizmo::ROTATE;
-                ImGui::SameLine();
-                if (ImGui::RadioButton("Scale", mCurrentGizmoOperation == ImGuizmo::SCALE))
-                    mCurrentGizmoOperation = ImGuizmo::SCALE;
-
-                glm::mat4 matrix = EntityMgr::entities[selected_id]->transform->GetMatrix();
-                float matrixTranslation[3], matrixRotation[3], matrixScale[3];
-                ImGuizmo::DecomposeMatrixToComponents(&matrix[0][0], matrixTranslation, matrixRotation, matrixScale);
-                ImGui::InputFloat3("Tr", matrixTranslation);
-                ImGui::InputFloat3("Rt", matrixRotation);
-                ImGui::InputFloat3("Sc", matrixScale);
-                ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, &matrix[0][0]);
-
-                EntityMgr::entities[selected_id]->transform->CopyTransforms(matrix);
-
-                if (mCurrentGizmoOperation != ImGuizmo::SCALE)
-                {
-                    if (ImGui::RadioButton("Local", mCurrentGizmoMode == ImGuizmo::LOCAL))
-                        mCurrentGizmoMode = ImGuizmo::LOCAL;
-                    ImGui::SameLine();
-                    if (ImGui::RadioButton("World", mCurrentGizmoMode == ImGuizmo::WORLD))
-                        mCurrentGizmoMode = ImGuizmo::WORLD;
-                }
-
-                if (ImGui::Button("Reset"))
-                {
-                    EntityMgr::entities[selected_id]->transform->Reset();
-                }
-            }
-
-            entity->RenderComponents();
-
-            if (EntityMgr::entities[selected_id]->GetComponent<ModelRenderer>()) {
-
-                if (ImGui::CollapsingHeader(ICON_FA_PAINTBRUSH " Material")) {
-                    Mesh* m = EntityMgr::entities[selected_id]->GetComponent<ModelRenderer>()->model->meshes[0];
-                    float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
-
-                    ImGui::ColorPicker3( "Albedo", albed);
-
-                    m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
-
-                    ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
-                    ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
-                }
-
-            }
-
-            ImGui::Separator();
-
-            AlignForWidth(ImGui::CalcTextSize("Add Component").x + ImGui::GetStyle().ItemSpacing.x);
-
-            if (ImGui::Button("Add Component"))
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
             {
-	            
-            }
-
-            if (ImGui::IsKeyPressed((ImGuiKey_Delete)))
-            {
-                entity->Delete();
-                selectedEntity = false;
-            }
-
-            if (ImGui::IsKeyPressed((ImGuiKey_Escape)))
-            {
-                selectedEntity = false;
-            }
-
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_D))
-            {
-                Entity* clone = EntityMgr::DuplicateEntity(entity);
-
-                clone->name = "Copy of " + clone->name;
-                selected_id = clone->id;
-            }
-        } else if (selectedFile)
-        {
-            string filename = selected_file.filename().string();
-            ImGui::InputText("Name", &filename);
-
-            ImGui::SameLine();
-
-            if (ImGui::Button(ICON_FA_TRASH_CAN "###file"))
-            {
-                Engine::Filesystem::DeleteFile(selected_file.string());
-                selectedFile = false;
-            }
-
-            string ext = selected_file.extension().string();
-
-            static float padding = 16.0f;
-            static float thumbnailSize = 64;
-            float cellSize = thumbnailSize * padding;
-
-            float panelWidth = ImGui::GetContentRegionAvail().x;
-            int columnCount = (int)(panelWidth / cellSize);
-
-            if (columnCount < 1)
-            {
-                columnCount = 1;
-            }
-
-            if (filetype == "TextFile" || filetype == "CodeFile")
-            {
-	            if (filetype == "CodeFile")
+	            if (ImGui::IsKeyPressed(ImGuiKey_N))
 	            {
-                    TextEditor::LanguageDefinition lang;
-
-                    if (ext == ".glsl")
-                    {
-                        lang = TextEditor::LanguageDefinition::GLSL();
-                    } else if (ext == "lua")
-                    {
-                        lang = TextEditor::LanguageDefinition::Lua();
-                    } else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c")
-                    {
-                        lang = TextEditor::LanguageDefinition::CPlusPlus();
-                    }
-
-                    text_editor->SetLanguageDefinition(lang);
-
-                    
-	            } else
-	            {
+                    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Create new project", nullptr, ".");
+                    fdtype = 0;
 	            }
 
-                auto cpos = text_editor->GetCursorPosition();
-
-                ImGui::Text("%6d/%-6d %6d lines  | %s | %s | %s | %s", cpos.mLine + 1, cpos.mColumn + 1, text_editor->GetTotalLines(),
-                    text_editor->IsOverwrite() ? "Ovr" : "Ins",
-                    text_editor->CanUndo() ? "*" : " ",
-                    text_editor->GetLanguageDefinition().mName.c_str(), filename.c_str());
-
-                text_editor->Render("TextEditor");
-
-                Engine::Filesystem::WriteFileString(selected_file.string(), text_editor->GetText());
-                    
-
-            } else if (filetype == "ImageFile")
-            {
-                if (!textureCache.count(selected_file.string())) {
-
-                    Texture ntex = Texture::Load(selected_file.string(), false);
-
-                    textureCache.insert(std::pair<string, Texture>(selected_file.string(), ntex));
+                if (ImGui::IsKeyPressed(ImGuiKey_O))
+                {
+                    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Open a Project", ".auproject", ".");
+                    fdtype = 1;
                 }
 
-                Texture tex = textureCache.at(selected_file.string());
-
-                ImGui::Image((ImTextureID)tex.ID, { thumbnailSize, thumbnailSize });
-
-                ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, tex.width, "");
-
-                padding = thumbnailSize / 32;
-
+                if (ImGui::IsKeyPressed(ImGuiKey_S))
+                {
+                    Project::GetProject()->Save();
+                }
             }
-        } 
-    }
-    ImGui::End();
 
-    ImGui::Begin(ICON_FA_MAGNIFYING_GLASS " Explorer");
+            if (ImGui::BeginMenu("Options"))
+            {
+                // Disabling fullscreen would allow the window to be moved to the front of other windows,
+                // which we can't undo at the moment without finer window depth/z control.
+                ImGui::MenuItem("Fullscreen", NULL, &opt_fullscreen);
+                ImGui::MenuItem("Padding", NULL, &opt_padding);
+                ImGui::Separator();
 
-    for (Entity* entity : EntityMgr::entities)
-    {
-        const bool is_selected = (selected_id == entity->id);
+                // Display a menu item for each Dockspace flag, clicking on one will toggle its assigned flag.
+                if (ImGui::MenuItem("Flag: NoSplit", "", (dockspace_flags & ImGuiDockNodeFlags_NoSplit) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoSplit; }
+                if (ImGui::MenuItem("Flag: NoResize", "", (dockspace_flags & ImGuiDockNodeFlags_NoResize) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoResize; }
+                if (ImGui::MenuItem("Flag: NoDockingInCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_NoDockingInCentralNode) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoDockingInCentralNode; }
+                if (ImGui::MenuItem("Flag: AutoHideTabBar", "", (dockspace_flags & ImGuiDockNodeFlags_AutoHideTabBar) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_AutoHideTabBar; }
+                if (ImGui::MenuItem("Flag: PassthruCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode) != 0, opt_fullscreen)) { dockspace_flags ^= ImGuiDockNodeFlags_PassthruCentralNode; }
+                ImGui::Separator();
 
-        string cicon = ICON_FA_CHECK;
+                ImGui::EndMenu();
+            }
 
-        if (!entity->enabled)
-            cicon = ICON_FA_XMARK;
+            if (Project::ProjectLoaded()) {
 
-        if (ImGui::Button((cicon+"###"+std::to_string(entity->id)).c_str()))
-        {
-            entity->enabled = !entity->enabled;
+                Scene* currentScene = Scene::GetScene();
+
+                if (ImGui::BeginMenu("Add"))
+                {
+
+                    if (ImGui::Selectable(ICON_FA_CUBE " Cube"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Cube");
+
+                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
+                        renderer->model = Model::LoadModel("editor/models/cube.fbx");
+                        Shader* shader = new Shader("editor/shaders/0/");
+                        renderer->model->SetShader(shader);
+                    }
+
+                    if (ImGui::Selectable(ICON_FA_CIRCLE " Sphere"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Sphere");
+
+                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
+                        renderer->model = Model::LoadModel("editor/models/sphere.fbx");
+                        Shader* shader = new Shader("editor/shaders/0/");
+                        renderer->model->SetShader(shader);
+                    }
+
+                    if (ImGui::Selectable("Cone"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Cone");
+
+                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
+                        renderer->model = Model::LoadModel("editor/models/cone.fbx");
+                        Shader* shader = new Shader("editor/shaders/0/");
+                        renderer->model->SetShader(shader);
+                    }
+
+                    if (ImGui::Selectable("Cylinder"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Cylinder");
+
+                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
+                        renderer->model = Model::LoadModel("editor/models/cylinder.fbx");
+                        Shader* shader = new Shader("editor/shaders/0/");
+                        renderer->model->SetShader(shader);
+                    }
+
+                    ImGui::Separator();
+
+                    if (ImGui::Selectable(ICON_FA_LIGHTBULB " Point Light"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Light");
+
+                        Light* light = entity->AttachComponent<Light>();
+
+                        light->color = vec3(1, 1, 1);
+                        light->power = 1000;
+                        light->enabled = true;
+
+                        entity->Init();
+                    }
+
+                    ImGui::Separator();
+
+                    if (ImGui::Selectable(ICON_FA_GLOBE " Skybox"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("Skybox");
+
+                        Skybox* sb = entity->AttachComponent<Skybox>();
+
+                        sb->LoadTexture("editor/textures/newport_loft.hdr");
+
+                        entity->Init();
+
+                        bfr->Resize({ oldGS.x, oldGS.y });
+                    }
+
+                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+                    ImGui::EndMenu();
+                }
+            }
+
+            ImGui::EndMenuBar();
         }
 
+        ImGui::End();
+
+        if (Project::ProjectLoaded()) {
+
+            Scene* currentScene = Scene::GetScene();
+
+        static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::UNIVERSAL);
+        static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::WORLD);
+
+        ImGui::Begin(ICON_FA_GAMEPAD " Scene Window");
+        {
+            // Using a Child allow to fill all the space of the window.
+            // It also alows customization
+            ImGui::BeginChild("SceneRender");
+            // Get the size of the child (i.e. the whole draw size of the windows).
+            ImVec2 wsize = ImGui::GetWindowSize();
+
+            ImVec2 wpos = ImGui::GetWindowPos();
+
+            if (wsize.x != oldGS.x && wsize.y != oldGS.y) {
+                bfr->Resize({ wsize.x, wsize.y });
+            }
+
+            oldGS = wsize;
+
+
+
+            mouse_cond = ImGui::IsWindowFocused();
+
+            // Because I use the texture from OpenGL, I need to invert the V from the UV.
+            ImGui::Image((ImTextureID)bfr->texture, wsize, ImVec2(0, 1), ImVec2(1, 0));
+
+            ImGuizmo::SetOrthographic(false);
+            ImGuizmo::BeginFrame();
+            ImGuizmo::Enable(true);
+
+            ImGuizmo::SetDrawlist();
+
+            ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, wsize.x, wsize.y);
+
+            if (selectedEntity) {
+
+                glm::mat4 matrix = currentScene->entity_mgr->entities[selected_id]->transform->GetMatrix();
+
+                mat4 gridMat = glm::mat4(1.0);
+
+                //ImGuizmo::DrawGrid(&view[0][0], &projection[0][0], &gridMat[0][0], 100);
+                ImGuizmo::Manipulate(&view[0][0], &projection[0][0], mCurrentGizmoOperation, mCurrentGizmoMode, &matrix[0][0]);
+                //ImGuizmo::DrawCubes(&view[0][0], &projection[0][0], &matrix[0][0], 1);
+
+
+                currentScene->entity_mgr->entities[selected_id]->transform->CopyTransforms(matrix);
+            }
+
+            float viewManipulateRight = ImGui::GetWindowPos().x + wsize.x;
+            float viewManipulateTop = ImGui::GetWindowPos().y;
+
+            ImGuizmo::ViewManipulate(&view[0][0], 100.0f, ImVec2(viewManipulateRight - 128, viewManipulateTop), ImVec2(128, 128), 0x10101010);
+
+            ImVec2 window_pos = ImGui::GetWindowPos();
+            ImVec2 window_size = ImGui::GetWindowSize();
+            ImVec2 window_center = ImVec2(window_pos.x + window_size.x * 0.5f, window_pos.y + window_size.y * 0.5f);
+            ImVec2 window_bound = { window_pos.x + window_size.x, window_pos.y + window_size.y };
+            ImVec2 mouse_pos = ImGui::GetMousePos();
+
+            mouse_pos = ImClamp(mouse_pos, wpos, window_bound);
+
+            /*
+
+            // Initial horizontal angle : toward -Z
+            static float horizontalAngle = 3.14f;
+            // Initial vertical angle : none
+            static float verticalAngle = 0.0f;
+
+            float speed = 3.0f; // 3 units / second
+            float mouseSpeed = 0.005f;
+
+
+            horizontalAngle += mouseSpeed * float(window_center.x / 2 - mouse_pos.x);
+            verticalAngle += mouseSpeed * float(window_center.y / 2 - mouse_pos.y);
+
+            // Direction : Spherical coordinates to Cartesian coordinates conversion
+            glm::vec3 direction(
+                cos(verticalAngle)* sin(horizontalAngle),
+                sin(verticalAngle),
+                cos(verticalAngle)* cos(horizontalAngle)
+            );
+
+            // Right std::vector
+            glm::vec3 right = glm::vec3(
+                sin(horizontalAngle - 3.14f / 2.0f),
+                0,
+                cos(horizontalAngle - 3.14f / 2.0f)
+            );
+
+            // Up std::vector
+            glm::vec3 up = glm::cross(right, direction);
+
+            // Initial position : on +Z
+            static glm::vec3 position = glm::vec3(0, 0, 5);
+
+            view = glm::lookAt(position, position + direction, up);
+
+            // Reset mouse position for next frame
+            glfwSetCursorPos(window, window_pos.x/2, window_pos.y/2);
+
+            */
+
+            ImGui::GetForegroundDrawList()->AddCircle(wpos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+
+            ImGui::GetForegroundDrawList()->AddCircle(mouse_pos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+
+            ImGui::GetForegroundDrawList()->AddCircle(window_bound, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+
+            ImGui::EndChild();
+        }
+        ImGui::End();
+
+        ImGui::Begin(ICON_FA_LIST " Properties");
+        {
+            if (selectedEntity) {
+                Entity* entity = currentScene->entity_mgr->entities[selected_id];
+
+                ImGui::Checkbox("Enabled", &entity->enabled);
+
+                ImGui::SameLine();
+
+                ImGui::InputText("Name", &entity->name);
+
+                ImGui::SameLine();
+
+                ImGui::Text(("ID: " + to_string(entity->id)).c_str());
+
+                if (ImGui::CollapsingHeader(ICON_FA_UP_DOWN_LEFT_RIGHT " Transform")) {
+
+                    if (ImGui::IsKeyPressed((ImGuiKey)90))
+                        mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
+                    if (ImGui::IsKeyPressed((ImGuiKey)69))
+                        mCurrentGizmoOperation = ImGuizmo::ROTATE;
+                    if (ImGui::IsKeyPressed((ImGuiKey)82)) // r Key
+                        mCurrentGizmoOperation = ImGuizmo::SCALE;
+                    if (ImGui::RadioButton("Translate", mCurrentGizmoOperation == ImGuizmo::TRANSLATE))
+                        mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
+                    ImGui::SameLine();
+                    if (ImGui::RadioButton("Rotate", mCurrentGizmoOperation == ImGuizmo::ROTATE))
+                        mCurrentGizmoOperation = ImGuizmo::ROTATE;
+                    ImGui::SameLine();
+                    if (ImGui::RadioButton("Scale", mCurrentGizmoOperation == ImGuizmo::SCALE))
+                        mCurrentGizmoOperation = ImGuizmo::SCALE;
+
+                    glm::mat4 matrix = currentScene->entity_mgr->entities[selected_id]->transform->GetMatrix();
+                    float matrixTranslation[3], matrixRotation[3], matrixScale[3];
+                    ImGuizmo::DecomposeMatrixToComponents(&matrix[0][0], matrixTranslation, matrixRotation, matrixScale);
+                    ImGui::DragFloat3("Tr", matrixTranslation);
+                    ImGui::DragFloat3("Rt", matrixRotation);
+                    ImGui::DragFloat3("Sc", matrixScale);
+
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        //matrixRotation[i] *= RAD2DEG;
+                    }
+
+                    ImGuizmo::RecomposeMatrixFromComponents(matrixTranslation, matrixRotation, matrixScale, &matrix[0][0]);
+
+                    /*
+                    matrix = translate(matrix, { matrixTranslation[0], matrixTranslation[1], matrixTranslation[2] });
+                    matrix = rotate(matrix, matrixRotation[0], { 1,0,0 });
+                    matrix = rotate(matrix, matrixRotation[1], { 0,1,0 });
+                    matrix = rotate(matrix, matrixRotation[2], { 0,0,1 });
+                    matrix = scale(matrix, { matrixScale[0], matrixScale[1], matrixScale[2] });
+                    */
+
+                    currentScene->entity_mgr->entities[selected_id]->transform->CopyTransforms(matrix);
+
+                    if (mCurrentGizmoOperation != ImGuizmo::SCALE)
+                    {
+                        if (ImGui::RadioButton("Local", mCurrentGizmoMode == ImGuizmo::LOCAL))
+                            mCurrentGizmoMode = ImGuizmo::LOCAL;
+                        ImGui::SameLine();
+                        if (ImGui::RadioButton("World", mCurrentGizmoMode == ImGuizmo::WORLD))
+                            mCurrentGizmoMode = ImGuizmo::WORLD;
+                    }
+
+                    if (ImGui::Button("Reset"))
+                    {
+                        currentScene->entity_mgr->entities[selected_id]->transform->Reset();
+                    }
+                }
+
+                entity->RenderComponents();
+
+                if (currentScene->entity_mgr->entities[selected_id]->GetComponent<ModelRenderer>()) {
+
+                    if (ImGui::CollapsingHeader(ICON_FA_PAINTBRUSH " Material")) {
+                        Mesh* m = currentScene->entity_mgr->entities[selected_id]->GetComponent<ModelRenderer>()->model->meshes[0];
+                        float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
+
+                        ImGui::ColorPicker3("Albedo", albed);
+
+                        m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
+
+                        ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
+                        ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
+                    }
+
+                }
+
+                ImGui::Separator();
+
+                AlignForWidth(ImGui::CalcTextSize("Add Component").x + ImGui::GetStyle().ItemSpacing.x);
+
+                static bool acopen = false;
+
+                ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+
+                ImVec2 cursorSize = ImGui::CalcTextSize("Add Component");
+
+                cursorPos.y += cursorSize.y* 2;
+
+                if (ImGui::Button("Add Component"))
+                {
+                    acopen = true;
+                }
+
+                if (acopen)
+                {
+                    ImGui::SetNextWindowPos(cursorPos);
+
+
+                    ImGui::Begin("Add Component");
+
+                    static std::string filter = "";
+
+                    ImGui::InputText(ICON_FA_MAGNIFYING_GLASS, &filter);
+
+                    ImGui::BeginChild("acid");
+
+                    for (std::pair<const std::string, std::shared_ptr<Component>(*)()> cmp_map : ComponentRegistry::cmp_map)
+                    {
+                        if (cmp_map.first.find(filter) != std::string::npos) {
+                            bool selected = false;
+
+                            ImGui::Selectable(cmp_map.first.c_str(), &selected);
+
+                            if (selected)
+                            {
+                                entity->AddComponent(cmp_map.first);
+                                break;
+                            }
+                        }
+                    }
+
+                    ImGui::EndChild();
+
+                    ImGui::End();
+
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    {
+                        acopen = false;
+                    }
+                }
+
+                if (ImGui::IsKeyPressed((ImGuiKey_Delete)))
+                {
+                    entity->Delete();
+                    selectedEntity = false;
+                }
+
+                if (ImGui::IsKeyPressed((ImGuiKey_Escape)))
+                {
+                    selectedEntity = false;
+                }
+
+                if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_D))
+                {
+                    Entity* clone = currentScene->entity_mgr->DuplicateEntity(entity);
+
+                    clone->name = "Copy of " + clone->name;
+                    selected_id = clone->id;
+                }
+            }
+            else if (selectedFile)
+            {
+                std::string filename = selected_file.filename().string();
+                ImGui::InputText("Name", &filename);
+
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_TRASH_CAN "###file"))
+                {
+                    Engine::Filesystem::DeleteFile(selected_file.string());
+                    selectedFile = false;
+                }
+
+                std::string ext = selected_file.extension().string();
+
+                static float padding = 16.0f;
+                static float thumbnailSize = 64;
+                float cellSize = thumbnailSize * padding;
+
+                float panelWidth = ImGui::GetContentRegionAvail().x;
+                int columnCount = (int)(panelWidth / cellSize);
+
+                if (columnCount < 1)
+                {
+                    columnCount = 1;
+                }
+
+                if (filetype == "TextFile" || filetype == "CodeFile")
+                {
+                    if (filetype == "CodeFile")
+                    {
+                        TextEditor::LanguageDefinition lang;
+
+                        if (ext == ".glsl")
+                        {
+                            lang = TextEditor::LanguageDefinition::GLSL();
+                        }
+                        else if (ext == "lua")
+                        {
+                            lang = TextEditor::LanguageDefinition::Lua();
+                        }
+                        else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c")
+                        {
+                            lang = TextEditor::LanguageDefinition::CPlusPlus();
+                        }
+
+                        text_editor->SetLanguageDefinition(lang);
+
+
+                    }
+                    else
+                    {
+                    }
+
+                    auto cpos = text_editor->GetCursorPosition();
+
+                    ImGui::Text("%6d/%-6d %6d lines  | %s | %s | %s | %s", cpos.mLine + 1, cpos.mColumn + 1, text_editor->GetTotalLines(),
+                        text_editor->IsOverwrite() ? "Ovr" : "Ins",
+                        text_editor->CanUndo() ? "*" : " ",
+                        text_editor->GetLanguageDefinition().mName.c_str(), filename.c_str());
+
+                    text_editor->Render("TextEditor");
+
+                    Engine::Filesystem::WriteFileString(selected_file.string(), text_editor->GetText());
+
+
+                }
+                else if (filetype == "ImageFile")
+                {
+                    if (!textureCache.count(selected_file.string())) {
+
+                        Texture ntex = Texture::Load(selected_file.string(), false);
+
+                        textureCache.insert(std::pair<std::string, Texture>(selected_file.string(), ntex));
+                    }
+
+                    Texture tex = textureCache.at(selected_file.string());
+
+                    ImGui::Image((ImTextureID)tex.ID, { thumbnailSize, thumbnailSize });
+
+                    ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, tex.width, "");
+
+                    padding = thumbnailSize / 32;
+
+                }
+            }
+        }
+        ImGui::End();
+
+        ImGui::Begin(ICON_FA_MAGNIFYING_GLASS " Explorer");
+
+        for (Entity* entity : currentScene->entity_mgr->entities)
+        {
+            const bool is_selected = (selected_id == entity->id);
+
+            std::string cicon = ICON_FA_CHECK;
+
+            if (!entity->enabled)
+                cicon = ICON_FA_XMARK;
+
+            if (ImGui::Button((cicon + "###" + to_string(entity->id)).c_str()))
+            {
+                entity->enabled = !entity->enabled;
+            }
+
+
+            ImGui::SameLine();
+
+            string label = entity->name + "" + to_string(entity->id);
+
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_id = entity->id;
+                selectedEntity = true;
+            }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::End();
+
+        ImGui::Begin(ICON_FA_FOLDER_OPEN " Asset Browser");
+
+        static std::filesystem::path assetdir = Engine::Filesystem::GetCurrentDir();
+
+        if (ImGui::Button(ICON_FA_TURN_UP "###ab"))
+        {
+            if (assetdir.string() != Engine::Filesystem::GetCurrentDir()) {
+                assetdir = assetdir.parent_path();
+            }
+        }
 
         ImGui::SameLine();
 
-        if (ImGui::Selectable(entity->name.c_str(), is_selected)) {
-            selected_id = entity->id;
-            selectedEntity = true;
-        }
+        ImGui::PushItemWidth(ImGui::CalcTextSize(assetdir.string().c_str()).x + 25);
+        ImGui::InputText("###currentdir", &assetdir.string());
+        ImGui::PopItemWidth();
 
-        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-        if (is_selected) {
-            ImGui::SetItemDefaultFocus();
-        }
-    }
+        ImVec2 windowSize = ImGui::GetWindowSize();
 
-    ImGui::End();
+        ImGui::BeginChild("MainFiles", { windowSize.x, (windowSize.y * 0.75f) });
 
-    ImGui::Begin(ICON_FA_FOLDER_OPEN " Asset Browser");
+        static float padding = 16.0f;
+        static float thumbnailSize = 64;
+        float cellSize = thumbnailSize * padding;
 
-    static filesystem::path assetdir = Engine::Filesystem::GetCurrentDir();
+        float panelWidth = ImGui::GetContentRegionAvail().x;
+        int columnCount = (int)(panelWidth / cellSize);
 
-    if (ImGui::Button(ICON_FA_TURN_UP "###ab"))
-    {
-        if (assetdir.string() != Engine::Filesystem::GetCurrentDir()) {
-            assetdir = assetdir.parent_path();
-        }
-    }
-
-    ImGui::SameLine();
-
-    ImGui::PushItemWidth(ImGui::CalcTextSize(assetdir.string().c_str()).x+25);
-    ImGui::InputText("###currentdir", &assetdir.string());
-    ImGui::PopItemWidth();
-
-    ImVec2 windowSize = ImGui::GetWindowSize();
-
-    ImGui::BeginChild("MainFiles", {windowSize.x, (windowSize.y*0.75f)});
-
-    static float padding = 16.0f;
-    static float thumbnailSize = 64;
-    float cellSize = thumbnailSize * padding;
-
-    float panelWidth = ImGui::GetContentRegionAvail().x;
-    int columnCount = (int)(panelWidth / cellSize);
-
-    if (columnCount < 1)
-    {
-        columnCount = 1;
-    }
-
-    ImGui::Columns(columnCount, 0, false);
-
-	static std::map<string, Texture> fileIcons = {
-        {"Folder", Texture::Load("resources/icons/svgs/solid/folder.png", false)},
-        {"File", Texture::Load("resources/icons/svgs/solid/file.png", false)},
-        {"TextFile", Texture::Load("resources/icons/svgs/solid/file-lines.png", false)},
-        {"CodeFile", Texture::Load("resources/icons/svgs/solid/file-code.png", false)},
-        {"ConfigFile", Texture::Load("resources/icons/svgs/solid/gears.png", false)},
-        {"Executable", Texture::Load("resources/icons/svgs/solid/computer.png", false)},
-        {"Library", Texture::Load("resources/icons/svgs/solid/book.png", false)},
-        {"ModelFile", Texture::Load("resources/icons/svgs/solid/cubes.png", false)},
-        {"MeshFile", Texture::Load("resources/icons/svgs/solid/cube.png", false)},
-    };
-
-    for( auto& directory : std::filesystem::directory_iterator(assetdir))
-    {
-        const auto& path = directory.path();
-        //auto relativePath = filesystem::relative(path, )
-
-        string filename = path.filename().string();
-
-        //ImGui::Columns(10);
-
-        float s = 64; 
-
-        string bicon = ICON_FA_FOLDER;
-        string type = "File";
-
-        ImVec4 iconColor = ImVec4(1, 1, 1, 1);
-
-        bool ploaded = false;
-
-        unsigned int tex = 0;
-
-        if (!directory.is_directory())
+        if (columnCount < 1)
         {
-            bicon = ICON_FA_FILE;
-            string ext = path.extension().string();
-            if (ext == ".png" || ext == ".jpg")
+            columnCount = 1;
+        }
+
+        ImGui::Columns(columnCount, 0, false);
+
+        static std::map<std::string, Texture> fileIcons = {
+            {"Folder", Texture::Load("editor/icons/svgs/solid/folder.png", false)},
+            {"File", Texture::Load("editor/icons/svgs/solid/file.png", false)},
+            {"TextFile", Texture::Load("editor/icons/svgs/solid/file-lines.png", false)},
+            {"CodeFile", Texture::Load("editor/icons/svgs/solid/file-code.png", false)},
+            {"ConfigFile", Texture::Load("editor/icons/svgs/solid/gears.png", false)},
+            {"Executable", Texture::Load("editor/icons/svgs/solid/computer.png", false)},
+            {"Library", Texture::Load("editor/icons/svgs/solid/book.png", false)},
+            {"ModelFile", Texture::Load("editor/icons/svgs/solid/cubes.png", false)},
+            {"MeshFile", Texture::Load("editor/icons/svgs/solid/cube.png", false)},
+            {"SceneFile", Texture::Load("editor/icons/svgs/solid/earth-americas.png", false)},
+                        {"ProjectFile", Texture::Load("editor/icons/svgs/solid/diagram-project.png", false)},
+        };
+
+        for (auto& directory : std::filesystem::directory_iterator(assetdir))
+        {
+            const auto& path = directory.path();
+            //auto relativePath = std::filesystem::relative(path, )
+
+            std::string filename = path.filename().string();
+
+            //ImGui::Columns(10);
+
+            float s = 64;
+
+            std::string bicon = ICON_FA_FOLDER;
+            std::string type = "File";
+
+            ImVec4 iconColor = ImVec4(1, 1, 1, 1);
+
+            bool ploaded = false;
+
+            unsigned int tex = 0;
+
+            if (!directory.is_directory())
             {
-                string adir = assetdir.string();
+                bicon = ICON_FA_FILE;
+                std::string ext = path.extension().string();
+                if (ext == ".png" || ext == ".jpg")
+                {
+                    std::string adir = assetdir.string();
 
-                //std::replace(adir.begin(), adir.end(), '\\', '/');
+                    //replace(adir.begin(), adir.end(), '\\', '/');
 
-                string pth = directory.path().string();
+                    std::string pth = directory.path().string();
 
-                //std::replace(pth.begin(), pth.end(), '\\', '/');
-                if (!textureCache.count(pth)) {
+                    //replace(pth.begin(), pth.end(), '\\', '/');
+                    if (!textureCache.count(pth)) {
 
-                    Texture ntex = Texture::Load(pth, false);
+                        Texture ntex = Texture::Load(pth, false);
 
-                    textureCache.insert(std::pair<string, Texture>(pth, ntex));
+                        textureCache.insert(std::pair<std::string, Texture>(pth, ntex));
+                    }
+                    tex = textureCache.at(pth).ID;
+                    ploaded = true;
+                    type = "ImageFile";
                 }
-                tex = textureCache.at(pth).ID;
-                ploaded = true;
-                type = "ImageFile";
-            } else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c" || ext == ".glsl" || ext == ".lua" || ext == ".dll" || ext == ".pdb")
-            {
-                type = "CodeFile";
-            } else if (ext == ".bat" || ext == ".cmd" || ext == ".ini")
-            {
-                type = "ConfigFile";
-            } else if (ext == ".txt")
-            {
-                type = "TextFile";
-            } else if (ext == ".exe" || ext == ".app")
-            {
-                type = "Executable";
-            } else if (ext == ".lib")
-            {
-                type = "Library";
-            } else if (ext == ".fbx" || ext == ".dae")
-            {
-                type = "ModelFile";
-            } else if (ext == ".obj")
-            {
-                type = "MeshFile";
-            }
-        } else
-        {
-            type = "Folder";
-            iconColor = { 1,0.85,0.7,1.0 };
-        }
-
-        bool clicked = false;
-
-        if (tex == 0) {
-            clicked = ImGui::ImageButton((ImTextureID)fileIcons.find(type)->second.ID, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
-        } else
-        {
-            clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
-        }
-
-        if (ImGui::IsItemHovered())
-        {
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                if (directory.is_directory()) {
-                    assetdir /= path.filename();
+                else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c" || ext == ".glsl" || ext == ".lua" || ext == ".dll" || ext == ".pdb")
+                {
+                    type = "CodeFile";
+                }
+                else if (ext == ".bat" || ext == ".cmd" || ext == ".ini")
+                {
+                    type = "ConfigFile";
+                }
+                else if (ext == ".txt")
+                {
+                    type = "TextFile";
+                }
+                else if (ext == ".exe" || ext == ".app")
+                {
+                    type = "Executable";
+                }
+                else if (ext == ".lib")
+                {
+                    type = "Library";
+                }
+                else if (ext == ".fbx" || ext == ".dae")
+                {
+                    type = "ModelFile";
+                }
+                else if (ext == ".obj")
+                {
+                    type = "MeshFile";
+                } else if (ext == ".auscene")
+                {
+                    type = "SceneFile";
+                } else if (ext == ".auproject")
+                {
+                    type = "ProjectFile";
                 }
             }
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            else
             {
-                selected_file = directory.path();
-                if (!directory.is_directory()) {
-                    filedata = Engine::Filesystem::ReadFileString(selected_file.string());
-                    text_editor->SetText(filedata);
+                type = "Folder";
+                iconColor = { 1,0.85,0.7,1.0 };
+            }
+
+            bool clicked = false;
+
+            if (tex == 0) {
+                clicked = ImGui::ImageButton((ImTextureID)fileIcons.find(type)->second.ID, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
+            }
+            else
+            {
+                clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
+            }
+
+            if (ImGui::IsItemHovered())
+            {
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    if (directory.is_directory()) {
+                        assetdir /= path.filename();
+                    } else
+                    {
+
+                        if (type == "ProjectFile")
+                        {
+                            Project::Load(path.parent_path().string());
+                        } else if (type == "SceneFile")
+                        {
+                            Project::GetProject()->LoadScenePath(path.string());
+                        }
+                    }
                 }
-                filetype = type;
-                selectedFile = true;
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    selected_file = directory.path();
+                    if (!directory.is_directory()) {
+                        filedata = Engine::Filesystem::ReadFileString(selected_file.string());
+                        text_editor->SetText(filedata);
+                    }
+                    filetype = type;
+                    selectedFile = true;
+                    selectedEntity = false;
+                }
+
+            }
+
+            ImGui::TextWrapped(filename.c_str());
+
+            ImGui::NextColumn();
+        }
+
+        ImGui::Columns(1);
+
+        ImGui::EndChild();
+
+        ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 64, "");
+        //ImGui::SameLine();
+        //ImGui::SliderFloat("Padding", &padding, 0, 32);
+
+        padding = thumbnailSize / 32;
+
+        ImGui::End();
+
+        ImGui::Begin(ICON_FA_MESSAGE " Log");
+
+        for (std::pair<std::pair<int, std::string>, Logger::Level> logged_entry : Logger::loggedEntries)
+        {
+
+            ImVec4 col = { 1,1,1,1 };
+
+            switch (logged_entry.second)
+            {
+            case Logger::INFO:
+                break;
+            case Logger::DBG:
+                col = { 0,.5,1,1 };
+                break;
+            case Logger::WARN:
+                col = { 1,1,0,1 };
+                break;
+            case Logger::LOG_ERROR:
+                col = { 1,.25,.25,1 };
+                break;
+            }
+
+            ImGui::TextColored(col, logged_entry.first.second.c_str());
+
+            ImGui::NextColumn();
+        }
+
+        ImGui::End();
+
+        ImGui::ShowDemoWindow(&show_demo_window);
+
+        ImGui::Begin("Texture Viewer");
+
+        static int selectedTex = 0;
+
+        if (ImGui::Button("<"))
+        {
+            selectedTex--;
+        }
+
+        ImGui::SameLine();
+
+        ImGui::Text(to_string(selectedTex).c_str());
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(">"))
+        {
+            selectedTex++;
+        }
+
+        selectedTex = ImClamp(selectedTex, 0, 100);
+
+        ImGui::Image((ImTextureID)selectedTex, { 256,256 });
+
+        ImGui::End();
+
+    }
+
+    ImGui::SetNextWindowSize({ 600,400 });
+
+    if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey", ImGuiWindowFlags_NoCollapse))
+    {
+        // action if OK
+        if (ImGuiFileDialog::Instance()->IsOk())
+        {
+            std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+            std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
+            switch (fdtype)
+            {
+            case 0:
+                Project::Create(filePath);
                 selectedEntity = false;
+                selectedFile = false;
+                break;
+            case 1:
+                Project::Load(filePath);
+                bfr->Resize({ oldGS.x, oldGS.y });
             }
-
         }
 
-        ImGui::TextWrapped(filename.c_str());
-
-        ImGui::NextColumn();
+        // close
+        ImGuiFileDialog::Instance()->Close();
     }
-
-    ImGui::Columns(1);
-
-    ImGui::EndChild();
-
-    ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 64, "");
-    //ImGui::SameLine();
-    //ImGui::SliderFloat("Padding", &padding, 0, 32);
-
-    padding = thumbnailSize / 32;
-
-    ImGui::End();
-
-    ImGui::Begin("Performance");
-
-    ImGui::End();
-
-    ImGui::ShowDemoWindow(&show_demo_window);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -950,7 +1284,7 @@ TextureColorBuffer::TextureColorBuffer()
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderBuffer); // now actually attach it
     // now that we actually created the framebuffer and added all attachments we want to check if it is actually complete now
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+        std::cout << "LOG_ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 

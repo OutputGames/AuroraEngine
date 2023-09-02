@@ -71,14 +71,14 @@ project "AuroraEngine"
 
    defines {"GRAPHICS_OPENGL"}
 
-   files { "**.h", "**.hpp", "**.cpp", "**.c" }
+   files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp", "src/**.cpp", "src/**.c" }
 
    files {"resources\\**", "**.json", "lib\\**"}
 
-   includedirs {"include\\", "include\\aurora\\"}
+   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet"}
 
    links {
-        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib"
+        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib","BulletDynamics","BulletCollision", "LinearMath"
     }
 
     libdirs {
@@ -107,10 +107,12 @@ project "AuroraEngine"
         debugdir "./"
         staticruntime "off"
         runtime "Debug"
+        libdirs {"vcpkg/installed/x64-windows/debug/lib/"}
 
    filter "configurations:Release"
         defines { "NDEBUG" }
         optimize "On"
         staticruntime "off"
         runtime "Release"
+        libdirs {"vcpkg/installed/x64-windows/lib/"}
 --check_imgui()
