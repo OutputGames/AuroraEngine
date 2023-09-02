@@ -21,6 +21,8 @@ on:
         description: "Release Name"
         default: "new release"
 
+
+
 env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: .
@@ -30,12 +32,12 @@ env:
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: ${{github.event.inputs.cfg}}
   BUILD_PLATFORM: ${{github.event.inputs.platform}}
-
-permissions:
-  contents: read
+  ADDREL: ${{github.event.inputs.addrel}}
+  RELNAME: ${{github.event.inputs.relname}}
 
 jobs:
   build:
+    permissions: write-all
     runs-on: windows-latest
 
     steps:
@@ -59,33 +61,34 @@ jobs:
 
       run: ./setupfiles.bat ${{env.BUILD_CONFIGURATION}}
 
+    - name: Make bzip
+      uses: vimtor/action-zip@v1
+      with:
+          files:  bin\${{env.BUILD_CONFIGURATION}}\
+          dest:  bin\${{env.BUILD_CONFIGURATION}}\build.zip
+
     - name: Upload a Build Artifact
+      if: ${{env.ADDREL == 'false'}}
       uses: actions/upload-artifact@v3.1.2
       with:
         # Artifact name
         name: AuroraEngine  # optional, default is artifact
         # A file, directory or wildcard pattern that describes what to upload
-        path: ./bin/${{env.BUILD_CONFIGURATION}}/
+        path: ./bin/${{env.BUILD_CONFIGURATION}}/build.zip
 
-    - name: Make bzip
-      if: github.events.inputs.addrel == true
-      uses: vimtor/action-zip@v1
-      with:
-          files:  bin\${{env.BUILD_CONFIGURATION}}\
-          dest:  bin\${{env.BUILD_CONFIGURATION}}\build.zip
     - name: Release
-      if: github.events.inputs.addrel == true
+      if: ${{env.ADDREL == 'true'}}
       id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.run_number }}
-        release_name: ${{ github.events.inputs.relname }}
+        release_name: ${{env.RELNAME}}
         draft: false
         prerelease: false
     - name: Upload Release Asset
-      if: github.events.inputs.addrel == true
+      if: ${{env.ADDREL == 'true'}}
       id: upload-release-asset 
       uses: actions/upload-release-asset@v1
       env:
