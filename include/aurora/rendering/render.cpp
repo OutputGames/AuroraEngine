@@ -19,7 +19,9 @@ unsigned int SCR_HEIGHT = 600;
 
 GLFWwindow* window;
 
-bool mouse_cond, selectedEntity, selectedFile;
+bool mouse_cond, selectedFile;
+
+map<string, Shader*> Shader::loadedShaders;
 
 std::filesystem::path selected_file;
 std::string filetype, filedata;
@@ -30,7 +32,7 @@ TextEditor* text_editor;
 
 ImVec2 oldGS;
 
-uint32_t selected_id;
+//uint32_t Entity::selected_id;
 
 bool fidopen=false;
 int fdtype;
@@ -291,6 +293,59 @@ void RenderMgr::UpdateGraphicsDevice()
     glfwPollEvents();
 }
 
+struct ImVec3 { float x, y, z; ImVec3(float _x = 0.0f, float _y = 0.0f, float _z = 0.0f) { x = _x; y = _y; z = _z; } };
+
+ImVec4 convertto(ImVec3 v)
+{
+    return { v.x, v.y, v.z, 1.00f };
+}
+
+void imgui_easy_theming(ImVec3 color_for_text, ImVec3 color_for_head, ImVec3 color_for_area, ImVec3 color_for_body, ImVec3 color_for_pops)
+{
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    style.Colors[ImGuiCol_Text] = ImVec4(color_for_text.x, color_for_text.y, color_for_text.z, 1.00f);
+    style.Colors[ImGuiCol_TextDisabled] = ImVec4(color_for_text.x, color_for_text.y, color_for_text.z, 0.58f);
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(color_for_body.x, color_for_body.y, color_for_body.z, 0.95f);
+    style.Colors[ImGuiCol_ChildBg] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 0.58f);
+    style.Colors[ImGuiCol_Border] = ImVec4(color_for_body.x, color_for_body.y, color_for_body.z, 0.00f);
+    style.Colors[ImGuiCol_BorderShadow] = ImVec4(color_for_body.x, color_for_body.y, color_for_body.z, 0.00f);
+    style.Colors[ImGuiCol_FrameBg] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 1.00f);
+    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.78f);
+    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TitleBg] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 1.00f);
+    style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 0.75f);
+    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 0.47f);
+    style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(color_for_area.x, color_for_area.y, color_for_area.z, 1.00f);
+    style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.21f);
+    style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.78f);
+    style.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_CheckMark] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.80f);
+    style.Colors[ImGuiCol_SliderGrab] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.50f);
+    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_Button] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.50f);
+    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.86f);
+    style.Colors[ImGuiCol_ButtonActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_Header] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.76f);
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.86f);
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_Tab] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TabActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TabHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TabUnfocused] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TabUnfocusedActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_ResizeGrip] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.78f);
+    style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_PlotLines] = ImVec4(color_for_text.x, color_for_text.y, color_for_text.z, 0.63f);
+    style.Colors[ImGuiCol_PlotLinesHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_PlotHistogram] = ImVec4(color_for_text.x, color_for_text.y, color_for_text.z, 0.63f);
+    style.Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 1.00f);
+    style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(color_for_head.x, color_for_head.y, color_for_head.z, 0.43f);
+    style.Colors[ImGuiCol_PopupBg] = ImVec4(color_for_pops.x, color_for_pops.y, color_for_pops.z, 0.92f);
+}
+
 void RenderMgr::DestroyGraphicsDevice()
 {
         glfwTerminate();
@@ -312,6 +367,20 @@ void AlignForWidth(float width, float alignment = 0.5f)
     float off = (avail - width) * alignment;
     if (off > 0.0f)
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
+}
+
+void ColorEditVec3(ImVec3& c, string label)
+{
+    float co[3] = {c.x, c.y,c.z};
+
+    ImGui::ColorEdit3(label.c_str(), co);
+
+    c = { co[0], co[1], co[2] };
+}
+
+ImVec3 GetVec3(ImVec4 v)
+{
+    return { v.x, v.y, v.z };
 }
 
 void RenderMgr::RenderEngineSpace()
@@ -471,6 +540,13 @@ void RenderMgr::RenderEngineSpace()
                 if (ImGui::BeginMenu("Add"))
                 {
 
+
+                    if (ImGui::Selectable(ICON_FA_CUBE " Empty Entity"))
+                    {
+                        Entity* entity = currentScene->entity_mgr->CreateEntity("New Entity");
+                    }
+
+
                     if (ImGui::Selectable(ICON_FA_CUBE " Cube"))
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cube");
@@ -559,6 +635,11 @@ void RenderMgr::RenderEngineSpace()
         static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::UNIVERSAL);
         static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::WORLD);
 
+        static std::map<string, Model*> loadedModels{
+        };
+
+
+        //ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(ICON_FA_GAMEPAD " Scene Window");
         {
             // Using a Child allow to fill all the space of the window.
@@ -567,20 +648,172 @@ void RenderMgr::RenderEngineSpace()
             // Get the size of the child (i.e. the whole draw size of the windows).
             ImVec2 wsize = ImGui::GetWindowSize();
 
+            ImVec2 vview = ImGui::GetContentRegionAvail();
+
             ImVec2 wpos = ImGui::GetWindowPos();
 
-            if (wsize.x != oldGS.x && wsize.y != oldGS.y) {
-                bfr->Resize({ wsize.x, wsize.y });
+            if (oldGS.x != wsize.x && oldGS.y != wsize.y) {
+                bfr->Resize({ vview.x, vview.y });
+                oldGS = wsize;
             }
-
-            oldGS = wsize;
-
-
 
             mouse_cond = ImGui::IsWindowFocused();
 
             // Because I use the texture from OpenGL, I need to invert the V from the UV.
             ImGui::Image((ImTextureID)bfr->texture, wsize, ImVec2(0, 1), ImVec2(1, 0));
+
+
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("FILE_MOVE"))
+                {
+                    const wchar_t* payload_n = (const wchar_t*)payload->Data;
+
+                    wstring ws(payload_n);
+
+                    string payload_s(ws.begin(), ws.end());
+
+                    filesystem::path path(payload_s);
+
+                    if (filetype == "ModelFile")
+                    {
+                        Entity* entity = Model::Load(path.string(), "editor/shaders/0");
+                    }
+
+                    Logger::Log(path.relative_path().string()+", "+filetype, Logger::DBG, "DBG");
+
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGui::SetItemAllowOverlap();
+
+            ImGui::SetCursorPos(ImGui::GetWindowContentRegionMin());
+
+            ImVec2 window_pos = ImGui::GetWindowPos();
+            ImVec2 window_size = ImGui::GetWindowSize();
+            ImVec2 window_center = ImVec2(window_pos.x + window_size.x * 0.5f, window_pos.y + window_size.y * 0.5f);
+            ImVec2 window_bound = { window_pos.x + window_size.x, window_pos.y + window_size.y };
+            ImVec2 mouse_pos = ImGui::GetMousePos();
+
+            ImVec2 mousePos = mouse_pos;
+
+            mousePos = ImClamp(mousePos, wpos, window_bound);
+
+            double xpos = 0, ypos = 0;
+
+            glfwGetCursorPos(window, &xpos, &ypos);
+
+            float min = -0.075;
+            float max = -min;
+
+            // glfwGetTime is called only once, the first time this function is called
+            static double lastTime = glfwGetTime();
+
+            // Compute time difference between current and last frame
+            double currentTime = glfwGetTime();
+            float deltaTime = float(currentTime - lastTime);
+
+
+            mousePos.x = min + ((mousePos.x - window_pos.x) / (window_bound.x - window_pos.x)) * (max - min);
+            mousePos.y = min + ((mousePos.y - window_pos.y) / (window_bound.y - window_pos.y)) * (max - min);
+
+            string s = "Mouse Pos: " + std::to_string(mouse_pos.x) + ", " + to_string(mouse_pos.y);
+            string s2 = "Mouse Pos: " + std::to_string(xpos) + ", " + to_string(ypos);
+
+            static  int nbf = 0;
+
+            nbf++;
+
+            static float ms=0;
+
+            if (deltaTime >= 1.0) { // If last prinf() was more than 1 sec ago
+                // printf and reset timer
+                ms = 1000.0 / nbf;
+                nbf = 0;
+                lastTime += 1.0;
+            }
+
+            ms = round(1000.0 / deltaTime);
+
+            ms *= 0.001;
+
+            ms = round(ms);
+
+            string f = "FrameTime: "+ std::to_string((int)ms);
+                ImGui::TextColored({ 1,0,0,1 }, f.c_str());
+
+            //ImGui::TextColored(ImVec4(1, 0, 0, 1), s.c_str());
+            //ImGui::TextColored(ImVec4(1, 0, 0, 1), s2.c_str());
+
+            // Initial horizontal angle : toward -Z
+            static float horizontalAngle = 3.14f;
+            // Initial vertical angle : none
+            static float verticalAngle = 0.0f;
+
+            float speed = 30.0f; // 3 units / second
+            float mouseSpeed = 0.00000005f;
+
+
+            // Initial position : on +Z
+            static glm::vec3 position = glm::vec3(0, 0, 5);
+
+            mat4 tempMat = inverse(view);
+
+            position = vec3(tempMat[3]);
+
+            if (ImGui::IsWindowFocused()) {
+
+                if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+                {
+                    horizontalAngle += flt mouseSpeed * deltaTime * 1.0 - mousePos.x;
+                    verticalAngle += flt mouseSpeed * deltaTime * 1.0 - mousePos.y;
+                }
+
+                // Direction : Spherical coordinates to Cartesian coordinates conversion
+                glm::vec3 direction(
+                    cos(verticalAngle) * sin(horizontalAngle),
+                    sin(verticalAngle),
+                    cos(verticalAngle) * cos(horizontalAngle)
+                );
+
+                // Right std::vector
+                glm::vec3 right = glm::vec3(
+                    sin(horizontalAngle - 3.14f / 2.0f),
+                    0,
+                    cos(horizontalAngle - 3.14f / 2.0f)
+                );
+
+                // Up std::vector
+                glm::vec3 up = glm::cross(right, direction);
+
+                if (ImGui::IsKeyDown(ImGuiKey_UpArrow))
+                {
+                    position += direction * deltaTime * speed;
+                }
+                if (ImGui::IsKeyDown(ImGuiKey_DownArrow))
+                {
+                    position -= direction * deltaTime * speed;
+                }
+                if (ImGui::IsKeyDown(ImGuiKey_RightArrow))
+                {
+                    position += right * deltaTime * speed;
+                }
+                if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+                {
+                    position -= right * deltaTime * speed;
+                }
+
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsKeyDown(ImGuiKey_UpArrow) || (ImGui::IsKeyDown(ImGuiKey_DownArrow)) || ImGui::IsKeyDown(ImGuiKey_RightArrow) | ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+                {
+                    view = glm::lookAt(position, position + direction, up);
+                }
+            }
+
+            // Reset mouse position for next frame
+            //glfwSetCursorPos(window, window_pos.x / 2, window_pos.y / 2);
+
+            ImGui::SetItemAllowOverlap();
 
             ImGuizmo::SetOrthographic(false);
             ImGuizmo::BeginFrame();
@@ -590,9 +823,9 @@ void RenderMgr::RenderEngineSpace()
 
             ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, wsize.x, wsize.y);
 
-            if (selectedEntity) {
+            if (Entity::selectedEntity) {
 
-                glm::mat4 matrix = currentScene->entity_mgr->entities[selected_id]->transform->GetMatrix();
+                glm::mat4 matrix = currentScene->entity_mgr->entities[Entity::selected_id]->transform->GetGlobalMatrix();
 
                 mat4 gridMat = glm::mat4(1.0);
 
@@ -601,7 +834,7 @@ void RenderMgr::RenderEngineSpace()
                 //ImGuizmo::DrawCubes(&view[0][0], &projection[0][0], &matrix[0][0], 1);
 
 
-                currentScene->entity_mgr->entities[selected_id]->transform->CopyTransforms(matrix);
+                currentScene->entity_mgr->entities[Entity::selected_id]->transform->CopyTransforms(matrix, true);
             }
 
             float viewManipulateRight = ImGui::GetWindowPos().x + wsize.x;
@@ -609,69 +842,30 @@ void RenderMgr::RenderEngineSpace()
 
             ImGuizmo::ViewManipulate(&view[0][0], 100.0f, ImVec2(viewManipulateRight - 128, viewManipulateTop), ImVec2(128, 128), 0x10101010);
 
-            ImVec2 window_pos = ImGui::GetWindowPos();
-            ImVec2 window_size = ImGui::GetWindowSize();
-            ImVec2 window_center = ImVec2(window_pos.x + window_size.x * 0.5f, window_pos.y + window_size.y * 0.5f);
-            ImVec2 window_bound = { window_pos.x + window_size.x, window_pos.y + window_size.y };
-            ImVec2 mouse_pos = ImGui::GetMousePos();
-
-            mouse_pos = ImClamp(mouse_pos, wpos, window_bound);
 
             /*
 
-            // Initial horizontal angle : toward -Z
-            static float horizontalAngle = 3.14f;
-            // Initial vertical angle : none
-            static float verticalAngle = 0.0f;
 
-            float speed = 3.0f; // 3 units / second
-            float mouseSpeed = 0.005f;
-
-
-            horizontalAngle += mouseSpeed * float(window_center.x / 2 - mouse_pos.x);
-            verticalAngle += mouseSpeed * float(window_center.y / 2 - mouse_pos.y);
-
-            // Direction : Spherical coordinates to Cartesian coordinates conversion
-            glm::vec3 direction(
-                cos(verticalAngle)* sin(horizontalAngle),
-                sin(verticalAngle),
-                cos(verticalAngle)* cos(horizontalAngle)
-            );
-
-            // Right std::vector
-            glm::vec3 right = glm::vec3(
-                sin(horizontalAngle - 3.14f / 2.0f),
-                0,
-                cos(horizontalAngle - 3.14f / 2.0f)
-            );
-
-            // Up std::vector
-            glm::vec3 up = glm::cross(right, direction);
-
-            // Initial position : on +Z
-            static glm::vec3 position = glm::vec3(0, 0, 5);
-
-            view = glm::lookAt(position, position + direction, up);
-
-            // Reset mouse position for next frame
-            glfwSetCursorPos(window, window_pos.x/2, window_pos.y/2);
 
             */
 
-            ImGui::GetForegroundDrawList()->AddCircle(wpos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+            //ImGui::GetForegroundDrawList()->AddCircle(wpos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
 
-            ImGui::GetForegroundDrawList()->AddCircle(mouse_pos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+            //ImGui::GetForegroundDrawList()->AddCircle(mouse_pos, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
 
-            ImGui::GetForegroundDrawList()->AddCircle(window_bound, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
+            //ImGui::GetForegroundDrawList()->AddCircle(window_bound, 10.0f, IM_COL32(0, 255, 0, 200), 0, 10);
 
             ImGui::EndChild();
+
+            lastTime = currentTime;
         }
         ImGui::End();
+        //ImGui::PopStyleVar();
 
         ImGui::Begin(ICON_FA_LIST " Properties");
         {
-            if (selectedEntity) {
-                Entity* entity = currentScene->entity_mgr->entities[selected_id];
+            if (Entity::selectedEntity) {
+                Entity* entity = currentScene->entity_mgr->entities[Entity::selected_id];
 
                 ImGui::Checkbox("Enabled", &entity->enabled);
 
@@ -700,7 +894,7 @@ void RenderMgr::RenderEngineSpace()
                     if (ImGui::RadioButton("Scale", mCurrentGizmoOperation == ImGuizmo::SCALE))
                         mCurrentGizmoOperation = ImGuizmo::SCALE;
 
-                    glm::mat4 matrix = currentScene->entity_mgr->entities[selected_id]->transform->GetMatrix();
+                    glm::mat4 matrix = currentScene->entity_mgr->entities[Entity::selected_id]->transform->GetMatrix();
                     float matrixTranslation[3], matrixRotation[3], matrixScale[3];
                     ImGuizmo::DecomposeMatrixToComponents(&matrix[0][0], matrixTranslation, matrixRotation, matrixScale);
                     ImGui::DragFloat3("Tr", matrixTranslation);
@@ -722,7 +916,7 @@ void RenderMgr::RenderEngineSpace()
                     matrix = scale(matrix, { matrixScale[0], matrixScale[1], matrixScale[2] });
                     */
 
-                    currentScene->entity_mgr->entities[selected_id]->transform->CopyTransforms(matrix);
+                    currentScene->entity_mgr->entities[Entity::selected_id]->transform->CopyTransforms(matrix);
 
                     if (mCurrentGizmoOperation != ImGuizmo::SCALE)
                     {
@@ -735,24 +929,232 @@ void RenderMgr::RenderEngineSpace()
 
                     if (ImGui::Button("Reset"))
                     {
-                        currentScene->entity_mgr->entities[selected_id]->transform->Reset();
+                        currentScene->entity_mgr->entities[Entity::selected_id]->transform->Reset();
                     }
                 }
 
                 entity->RenderComponents();
 
-                if (currentScene->entity_mgr->entities[selected_id]->GetComponent<ModelRenderer>()) {
+                if (currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<ModelRenderer>() || currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()) {
+
 
                     if (ImGui::CollapsingHeader(ICON_FA_PAINTBRUSH " Material")) {
-                        Mesh* m = currentScene->entity_mgr->entities[selected_id]->GetComponent<ModelRenderer>()->model->meshes[0];
-                        float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
 
-                        ImGui::ColorPicker3("Albedo", albed);
+                        if (entity->GetComponent<ModelRenderer>() && entity->GetComponent<ModelRenderer>()->model && entity->GetComponent<ModelRenderer>()->model->meshes.size() > 0) {
+                            
+                            ImGui::Separator();
 
-                        m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
+                            Mesh* m = currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<ModelRenderer>()->model->meshes[0];
+                            float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
 
-                        ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
-                        ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
+                            ImGui::ColorPicker3("Albedo", albed);
+
+                            m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
+
+                            ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
+                            ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
+
+                            /*
+
+                            for (pair<const string, Material::UniformData*> uniform : m->material->uniforms)
+                            {
+                                switch (uniform.second->type)
+                                {
+                                case GL_BOOL:
+                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second->b);
+                                    break;
+                                case GL_INT:
+                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second->i);
+                                    break;
+                                case GL_FLOAT:
+                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second->f);
+                                    break;
+                                case GL_FLOAT_VEC2:
+                                {
+                                    float v[2];
+
+                                    for (int i = 0; i < 2; ++i)
+                                    {
+                                        v[i] = uniform.second->v2[i];
+                                    }
+
+                                    ImGui::DragFloat2(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 2; ++i)
+                                    {
+                                        uniform.second->v2[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_VEC3:
+                                {
+                                    float v[3];
+
+                                    for (int i = 0; i < 3; ++i)
+                                    {
+                                        v[i] = uniform.second->v3[i];
+                                    }
+
+                                    ImGui::DragFloat3(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 3; ++i)
+                                    {
+                                        uniform.second->v3[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_VEC4:
+                                {
+                                    float v[4];
+
+                                    for (int i = 0; i < 4; ++i)
+                                    {
+                                        v[i] = uniform.second->v4[i];
+                                    }
+
+                                    ImGui::DragFloat4(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 4; ++i)
+                                    {
+                                        uniform.second->v4[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_MAT2:
+                                    break;
+                                case GL_FLOAT_MAT3:
+                                    break;
+                                case GL_FLOAT_MAT4:
+                                    break;
+                                }
+                            }
+                            */
+                        }
+
+                        if (entity->GetComponent<MeshRenderer>() && entity->GetComponent<MeshRenderer>()->mesh) {
+
+                            Mesh* m = currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()->mesh;
+
+                            Shader* s = m->material->shader;
+
+                            string st = "none";
+
+                            if (s)
+                            {
+                                st = s->name;
+                            }
+
+                            if (ImGui::BeginCombo("Shader", st.c_str())) {
+
+                                for (pair<const string, Shader*> loaded_shader : Shader::loadedShaders)
+                                {
+                                    if (ImGui::Selectable(loaded_shader.first.c_str()))
+                                    {
+                                        s = loaded_shader.second;
+                                    }
+                                }
+
+                                ImGui::EndCombo();
+                            }
+
+                            ImGui::Separator();
+
+                            if (s)
+                            {
+                                m->material->LoadShader(s);
+                            }
+
+                            if (m->material->uniforms.size() > 0) {
+
+                                if (m->material->uniforms.count("albedo")) {
+
+                                    float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
+
+                                    ImGui::ColorPicker3("Albedo", albed);
+
+                                    m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
+
+                                    ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
+                                    ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
+                                }
+                            }
+
+                            /*
+
+                            for (pair<const string, Material::UniformData*> uniform : m->material->uniforms)
+                            {
+                                switch (uniform.second->type)
+                                {
+                                case GL_BOOL:
+                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second->b);
+                                    break;
+                                case GL_INT:
+                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second->i);
+                                    break;
+                                case GL_FLOAT:
+                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second->f);
+                                    break;
+                                case GL_FLOAT_VEC2:
+                                {
+                                    float v[2];
+
+                                    for (int i = 0; i < 2; ++i)
+                                    {
+                                        v[i] = uniform.second->v2[i];
+                                    }
+
+                                    ImGui::DragFloat2(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 2; ++i)
+                                    {
+                                        uniform.second->v2[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_VEC3:
+                                {
+                                    float v[3];
+
+                                    for (int i = 0; i < 3; ++i)
+                                    {
+                                        v[i] = uniform.second->v3[i];
+                                    }
+
+                                    ImGui::DragFloat3(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 3; ++i)
+                                    {
+                                        uniform.second->v3[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_VEC4:
+                                {
+                                    float v[4];
+
+                                    for (int i = 0; i < 4; ++i)
+                                    {
+                                        v[i] = uniform.second->v4[i];
+                                    }
+
+                                    ImGui::DragFloat4(uniform.first.c_str(), v);
+
+                                    for (int i = 0; i < 4; ++i)
+                                    {
+                                        uniform.second->v4[i] = v[i];
+                                    }
+                                }
+                                break;
+                                case GL_FLOAT_MAT2:
+                                    break;
+                                case GL_FLOAT_MAT3:
+                                    break;
+                                case GL_FLOAT_MAT4:
+                                    break;
+                                }
+                            }
+                            */
+                        }
                     }
 
                 }
@@ -815,12 +1217,12 @@ void RenderMgr::RenderEngineSpace()
                 if (ImGui::IsKeyPressed((ImGuiKey_Delete)))
                 {
                     entity->Delete();
-                    selectedEntity = false;
+                    Entity::selectedEntity = false;
                 }
 
                 if (ImGui::IsKeyPressed((ImGuiKey_Escape)))
                 {
-                    selectedEntity = false;
+                    Entity::selectedEntity = false;
                 }
 
                 if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_D))
@@ -828,7 +1230,7 @@ void RenderMgr::RenderEngineSpace()
                     Entity* clone = currentScene->entity_mgr->DuplicateEntity(entity);
 
                     clone->name = "Copy of " + clone->name;
-                    selected_id = clone->id;
+                    Entity::selected_id = clone->id;
                 }
             }
             else if (selectedFile)
@@ -915,6 +1317,15 @@ void RenderMgr::RenderEngineSpace()
 
                     padding = thumbnailSize / 32;
 
+                } else if (filetype == "ModelFile")
+                {
+                    ImTextureID t = (ImTextureID)loadedModels[selected_file.string()]->GetIcon();
+
+                    ImGui::Image(t, { thumbnailSize, thumbnailSize });
+
+                    ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 200, "");
+
+                    padding = thumbnailSize / 32;
                 }
             }
         }
@@ -924,31 +1335,35 @@ void RenderMgr::RenderEngineSpace()
 
         for (Entity* entity : currentScene->entity_mgr->entities)
         {
-            const bool is_selected = (selected_id == entity->id);
+            if (!entity->transform->parent) {
+                /*
+                const bool is_selected = (Entity::selected_id == entity->id);
 
-            std::string cicon = ICON_FA_CHECK;
+                std::string cicon = ICON_FA_CHECK;
 
-            if (!entity->enabled)
-                cicon = ICON_FA_XMARK;
+                if (!entity->enabled)
+                    cicon = ICON_FA_XMARK;
 
-            if (ImGui::Button((cicon + "###" + to_string(entity->id)).c_str()))
-            {
-                entity->enabled = !entity->enabled;
-            }
+                if (ImGui::Button((cicon + "###" + to_string(entity->id)).c_str()))
+                {
+                    entity->enabled = !entity->enabled;
+                }
 
 
-            ImGui::SameLine();
+                ImGui::SameLine();
 
-            string label = entity->name + "" + to_string(entity->id);
+                string label = entity->name + "" + to_string(entity->id);
 
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_id = entity->id;
-                selectedEntity = true;
-            }
+                
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    Entity::selected_id = entity->id;
+                    Entity::selectedEntity = true;
+                }
+                
 
-            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
+*                */
+
+                Entity::DrawTree(entity);
             }
         }
 
@@ -1002,6 +1417,7 @@ void RenderMgr::RenderEngineSpace()
             {"SceneFile", Texture::Load("editor/icons/svgs/solid/earth-americas.png", false)},
                         {"ProjectFile", Texture::Load("editor/icons/svgs/solid/diagram-project.png", false)},
         };
+
 
         for (auto& directory : std::filesystem::directory_iterator(assetdir))
         {
@@ -1068,6 +1484,13 @@ void RenderMgr::RenderEngineSpace()
                 }
                 else if (ext == ".fbx" || ext == ".dae")
                 {
+                    if (!loadedModels.count(path.string()))
+                    {
+                        loadedModels.insert({ path.string(), Model::LoadModel(path.string()) });
+                    }
+
+                    //tex = loadedModels[path.string()]->GetIcon();
+
                     type = "ModelFile";
                 }
                 else if (ext == ".obj")
@@ -1090,11 +1513,22 @@ void RenderMgr::RenderEngineSpace()
             bool clicked = false;
 
             if (tex == 0) {
+                tex = fileIcons.find(type)->second.ID;
                 clicked = ImGui::ImageButton((ImTextureID)fileIcons.find(type)->second.ID, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
             }
             else
             {
                 clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
+            }
+
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+            {
+                ImGui::Image((ImTextureID)tex, { 100,100 });
+
+                const wchar_t* pl = path.c_str();
+
+                ImGui::SetDragDropPayload("FILE_MOVE", pl, (wcslen(pl)+1) * (sizeof(wchar_t)));
+                ImGui::EndDragDropSource();
             }
 
             if (ImGui::IsItemHovered())
@@ -1123,7 +1557,7 @@ void RenderMgr::RenderEngineSpace()
                     }
                     filetype = type;
                     selectedFile = true;
-                    selectedEntity = false;
+                    Entity::selectedEntity = false;
                 }
 
             }
@@ -1147,29 +1581,34 @@ void RenderMgr::RenderEngineSpace()
 
         ImGui::Begin(ICON_FA_MESSAGE " Log");
 
+        map<string, Logger::Level> loggedents;
+
         for (std::pair<std::pair<int, std::string>, Logger::Level> logged_entry : Logger::loggedEntries)
         {
+            if (!loggedents.count(logged_entry.first.second)) {
+                ImVec4 col = { 1,1,1,1 };
 
-            ImVec4 col = { 1,1,1,1 };
+                switch (logged_entry.second)
+                {
+                case Logger::INFO:
+                    break;
+                case Logger::DBG:
+                    col = { 0,.5,1,1 };
+                    break;
+                case Logger::WARN:
+                    col = { 1,1,0,1 };
+                    break;
+                case Logger::LOG_ERROR:
+                    col = { 1,.25,.25,1 };
+                    break;
+                }
 
-            switch (logged_entry.second)
-            {
-            case Logger::INFO:
-                break;
-            case Logger::DBG:
-                col = { 0,.5,1,1 };
-                break;
-            case Logger::WARN:
-                col = { 1,1,0,1 };
-                break;
-            case Logger::LOG_ERROR:
-                col = { 1,.25,.25,1 };
-                break;
+                //ImGui::TextColored(col, logged_entry.first.second.c_str());
+
+                //ImGui::NextColumn();
+
+                loggedents.insert({ logged_entry.first.second, logged_entry.second });
             }
-
-            ImGui::TextColored(col, logged_entry.first.second.c_str());
-
-            ImGui::NextColumn();
         }
 
         ImGui::End();
@@ -1202,6 +1641,36 @@ void RenderMgr::RenderEngineSpace()
 
         ImGui::End();
 
+        ImGui::Begin("Style Editor");
+
+        ImGuiStyle s = ImGui::GetStyle();
+
+        static ImVec3 textCol = GetVec3(s.Colors[ImGuiCol_Text]), headCol= GetVec3(s.Colors[ImGuiCol_Button]), areaCol= GetVec3(s.Colors[ImGuiCol_FrameBg]), bodyCol= GetVec3(s.Colors[ImGuiCol_WindowBg]), popsCol= GetVec3(s.Colors[ImGuiCol_PopupBg]);
+
+        ColorEditVec3(textCol, "Text Color");
+        ColorEditVec3(headCol, "Head Color");
+        ColorEditVec3(areaCol, "Area Color");
+        ColorEditVec3(bodyCol, "Body Color");
+        ColorEditVec3(popsCol, "Popup Color");
+
+        float d = 15;
+
+        headCol.x = bodyCol.x - flt(d / 255.0f);
+        headCol.y = bodyCol.y - flt(d / 255.0f);
+        headCol.z = bodyCol.z - flt(d / 255.0f);
+
+        	d = 15;
+
+        areaCol.x = headCol.x - flt(d / 255.0f);
+        areaCol.y = headCol.y - flt(d / 255.0f);
+        areaCol.z = headCol.z - flt(d / 255.0f);
+
+        popsCol = bodyCol;
+
+        imgui_easy_theming(textCol, headCol, areaCol, bodyCol, areaCol);
+
+        ImGui::End();
+
     }
 
     ImGui::SetNextWindowSize({ 600,400 });
@@ -1217,7 +1686,7 @@ void RenderMgr::RenderEngineSpace()
             {
             case 0:
                 Project::Create(filePath);
-                selectedEntity = false;
+                Entity::selectedEntity = false;
                 selectedFile = false;
                 break;
             case 1:
@@ -1306,4 +1775,8 @@ void TextureColorBuffer::Resize(glm::vec2 size)
     glViewport(0, 0, size.x, size.y);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void TextureColorBuffer::Unload()
+{
 }

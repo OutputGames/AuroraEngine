@@ -49,7 +49,7 @@ Texture Texture::Load(std::string path, bool flip)
     }
     else
     {
-        std::cout << "Failed to load texture at " << path << std::endl;
+        Logger::Log("Failed to load texture at " + path, Logger::LOG_ERROR, "TEXTURE");
     }
     stbi_image_free(data);
 
@@ -59,6 +59,7 @@ Texture Texture::Load(std::string path, bool flip)
     tex.width = width;
     tex.height = height;
     tex.path = path;
+    tex.isCubemap = false;
 
     return tex;
 }
@@ -87,7 +88,7 @@ CubemapTexture CubemapTexture::Load(vector<std::string> faces)
         }
         else
         {
-            std::cout << "Cubemap tex failed to load at path: " << faces[i] << std::endl;
+            Logger::Log("Failed to load cubemap face at " + faces[i], Logger::LOG_ERROR, "TEXTURE");
             stbi_image_free(data);
         }
     }
@@ -221,7 +222,7 @@ CubemapTexture CubemapTexture::LoadFromPath(string p)
     }
     else
     {
-        std::cout << "Failed to load HDR image." << std::endl;
+        Logger::Log("Failed to load texture at " + p, Logger::LOG_ERROR, "TEXTURE");
     }
 
     // pbr: setup cubemap to render to and attach to framebuffer

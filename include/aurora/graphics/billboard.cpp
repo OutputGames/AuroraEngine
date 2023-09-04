@@ -1,5 +1,6 @@
 #include "billboard.hpp"
 
+#include "engine/imgui_ext.hpp"
 #include "imgui/imgui.h"
 #include "rendering/camera.hpp"
 #include "rendering/render.hpp"
@@ -88,6 +89,9 @@ void Billboard::Update()
     RenderData* data = new RenderData;
     data->mesh = mesh;
 
+    data->castShadow = false;
+    data->cullBack = true;
+
     RenderMgr::renderObjs.push_back(data);
 
     //mat4 mat = entity->transform->GetMatrix();
@@ -106,35 +110,17 @@ void Billboard::EngineRender()
 
     std::string s = texture.path;
 
-    ImGui::InputText("Image Path", &s);
+    string filePathName="",filePath="";
 
-    ImGui::SameLine();
+    bool opened = ImGui::FileDialog(&s, ".png,.jpg", filePathName, filePath);
 
-    if (ImGui::Button("..."))
+    if (opened)
     {
-        ImGuiFileDialog::Instance()->OpenDialog("engine_cmp_dlg", "Open a File", ".png,.jpg", ".");
-    }
+        texture.Unload();
 
-    // display
-    if (ImGuiFileDialog::Instance()->Display("engine_cmp_dlg"))
-    {
-        // action if OK
-        if (ImGuiFileDialog::Instance()->IsOk())
-        {
-            std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-            std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
+        texture = Texture::Load(filePathName);
 
-            texture.Unload();
-
-            texture = Texture::Load(filePathName);
-
-            texture.isCubemap = false;
-
-            // action
-        }
-
-        // close
-        ImGuiFileDialog::Instance()->Close();
+        texture.isCubemap = false;
     }
 }
 

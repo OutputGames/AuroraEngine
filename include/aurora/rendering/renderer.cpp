@@ -16,7 +16,11 @@ void MeshRenderer::Update()
 {
 	RenderData* render_data = new RenderData;
 	render_data->mesh = mesh;
-	render_data->matrix = entity->transform->GetMatrix();
+	render_data->matrix = entity->transform->GetGlobalMatrix();
+
+	render_data->castShadow = true;
+	render_data->cullBack = true;
+
 	RenderMgr::renderObjs.push_back(render_data);
 }
 
@@ -41,7 +45,7 @@ void ModelRenderer::Update()
 		{
 			RenderData* render_data = new RenderData;
 			render_data->mesh = mesh;
-			render_data->matrix = entity->transform->GetMatrix();
+			render_data->matrix = entity->transform->GetGlobalMatrix();
 
 			if (entity->name == "Sphere") {
 
@@ -184,11 +188,19 @@ void ModelRenderer::EngineRender()
 
 			//std::cout << filePath << filePathName << std::endl;
 
-			Material* m = model->meshes[0]->material;
+			Material* m = nullptr;
+
+			if (model && model->meshes.size() > 0) {
+				m = model->meshes[0]->material;
+			}
 
 			model = Model::LoadModel(filePathName);
 
-			model->meshes[0]->material = m;
+			model->SetShader(new Shader("editor/shaders/0/"));
+
+			if (model && m != nullptr) {
+				model->meshes[0]->material = m;
+			}
 
 			// action
 		}

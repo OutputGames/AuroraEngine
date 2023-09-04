@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "json.hpp"
+#include "graphics/model.hpp"
 #include "imgui/icons/IconsFontAwesome6.h"
 #include "utils/utils.hpp"
 
@@ -56,12 +57,28 @@ struct Transform {
     vec3 position;
     quat rotation;
     vec3 scale=vec3(1.0);
-    void CopyTransforms(mat4 matrix);
+    void CopyTransforms(mat4 matrix, bool isGlobal=false);
 
     vec3 GetEulerAngles();
 
+    vec3 GetAbsolutePosition();
+    vec3 GetAbsoluteScale();
+    vec3 GetAbsoluteRotation();
+    quat GetAbsoluteRotationQuat();
+
     mat4 GetMatrix();
+    mat4 GetGlobalMatrix();
     void Reset();
+
+    void Update();
+
+    class Entity* entity;
+
+    Transform* parent=nullptr;
+
+
+    std::vector<Transform*> children;
+
 };
 
 struct Entity
@@ -106,8 +123,19 @@ struct Entity
     void Delete();
 
     void Init();
+
+    void SetParent(Entity* e);
+
+    static void DrawTree(Entity* n);
+
+    static bool selectedEntity;
+    static int selected_id;
+
+    Material* material;
+
 private:
     friend class Scene;
+    friend Transform;
 
     void Update();
 
@@ -115,6 +143,7 @@ private:
     {
         enabled = true;
         transform = new Transform();
+        material = new Material;
     };
 };
 
@@ -192,12 +221,15 @@ struct Scene
 {
     struct EntityMgr
     {
-    	std::vector<Entity*> entities;
+        EntityMgr();
+
     	void Update();
     	Entity* CreateEntity();
     	Entity* CreateEntity(std::string name);
     	void RemoveEntity(Entity* entity);
     	Entity* DuplicateEntity(Entity* entity);
+
+        vector<Entity*> entities;
     };
 
     EntityMgr* entity_mgr;

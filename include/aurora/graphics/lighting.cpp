@@ -1,6 +1,7 @@
 #include "lighting.hpp"
 
 #include "billboard.hpp"
+#include "engine/imgui_ext.hpp"
 #include "imgui/imgui.h"
 #include "rendering/camera.hpp"
 #include "stb/stb_image.h"
@@ -134,7 +135,7 @@ void Light::CalcShadowMap()
 	glClear(GL_DEPTH_BUFFER_BIT);
 
 	glm::mat4 lightProjection, lightView;
-	float near_plane = 0.01f, far_plane = 75.0f;
+	float near_plane = 1.0f, far_plane = 75.0f;
 	//lightProjection = glm::perspective(glm::radians(70.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
 	lightProjection = glm::ortho(-100.0f, 100.0f, -100.0f, 100.0f, near_plane, far_plane);
 	lightView = glm::lookAt(entity->transform->position, vec3{ 0 }, glm::vec3(0.0, 1.0, 0.0));
@@ -204,6 +205,23 @@ void Skybox::Update()
 
 	RenderMgr::renderObjs.push_back(render_data);
 	
+}
+
+void Skybox::EngineRender()
+{
+	string filePath, filePathName;
+	bool opened = ImGui::FileDialog(&cubemap_texture.path, ".hdr", filePathName, filePath);
+
+	if (opened)
+	{
+		cubemap_texture.Unload();
+
+		glDeleteTextures(1, &prefilterMap);
+		glDeleteTextures(1, &irradianceMap);
+
+		LoadTexture(filePathName);
+
+	}
 }
 
 unsigned int brdfLUTTexture;
@@ -588,10 +606,18 @@ void LightingMgr::EditMaterial(Material* material)
 		}
 		if (t.type == "texture_rad")
 		{
+			if (sky)
+			{
+				t.ID = sky->irradianceMap;
+			}
 			hasIrradiance = true;
 		}
 		if (t.type == "texture_pref")
 		{
+			if (sky)
+			{
+				t.ID = sky->prefilterMap;
+			}
 			hasPrefilter = true;
 		}
 		if (t.type == "texture_shad")

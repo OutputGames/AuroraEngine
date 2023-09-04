@@ -13,6 +13,9 @@
 
 #include "texture.hpp"
 
+struct Mesh;
+struct Entity;
+
 namespace Engine
 {
 	class Shader;
@@ -78,6 +81,12 @@ struct Material
 
 	std::vector<Texture> textures;
 
+    Material();
+
+    void Update();
+
+    Mesh* mesh;
+
     struct UniformData
     {
         GLenum type;
@@ -134,6 +143,8 @@ struct Material
 
             UniformData* dat = new UniformData;
             dat->type = type;
+            dat->m4 = mat4(0.0);
+            dat->v4 = vec4{ 0 };
 
             /*
             switch (type) {
@@ -245,6 +256,8 @@ struct Model
 
     }
 
+    static void processNode(aiNode* node, const aiScene* scene, Model* model, std::string mpath);
+
     void SetVertexBoneData(Vertex& vertex, int boneID, float weight)
     {
         for (int i = 0; i < MAX_BONE_INFLUENCE; ++i)
@@ -257,6 +270,8 @@ struct Model
             }
         }
     }
+
+    static Entity* Load(string path, string shaderPath="");
 
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene)
     {
@@ -291,6 +306,12 @@ struct Model
             }
         }
     }
+
+    unsigned int GetIcon();
+
+private:
+
+    unsigned int iconID=0;
 
 };
 

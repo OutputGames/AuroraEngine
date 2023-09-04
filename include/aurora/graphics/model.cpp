@@ -1,6 +1,19 @@
 #include "model.hpp"
 
+#include "engine/entity.hpp"
 #include "rendering/render.hpp"
+#include "rendering/renderer.hpp"
+
+Material::Material()
+{
+    shader = new Shader("editor/shaders/0/");
+    mesh = nullptr;
+}
+
+void Material::Update()
+{
+
+}
 
 void Mesh::Draw()
 {
@@ -37,7 +50,9 @@ void Mesh::Draw()
 
         std::string uniform = "material." + name + number;
 
-        material->shader->setInt((uniform).c_str(), i);
+        if (material->shader) {
+            material->shader->setInt((uniform).c_str(), i);
+        }
 
         GLenum textureTarget = GL_TEXTURE_2D;
 
@@ -133,6 +148,8 @@ Mesh* Mesh::Upload(MeshData* data)
 
     mesh->material = new Material();
 
+    mesh->material->mesh = mesh;
+
     mesh->material->textures = data->textures;
 
 	return mesh;
@@ -165,7 +182,7 @@ std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, s
 
         std::string directory;
         std::string path;
-        const std::size_t last_slash_idx = modelPath.rfind('/');
+        const std::size_t last_slash_idx = modelPath.rfind('\\');
         if (std::string::npos != last_slash_idx)
         {
             directory = modelPath.substr(0, last_slash_idx);
@@ -177,7 +194,7 @@ std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, s
 
         path = directory +"//" + spaths;
 
-        std::cout << "loading texture for model at " << path << std::endl;
+        Logger::Log("Loading texture for model at at " + path, Logger::INFO, "MODEL");
 
         // check if texture was loaded before and if so, continue to next iteration: skip loading a new texture
         bool skip = false;
@@ -305,7 +322,7 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string 
     return Mesh::Upload(data);
 }
 
-void processNode(aiNode* node, const aiScene* scene, Model* model, std::string mpath)
+void Model::processNode(aiNode* node, const aiScene* scene, Model* model, std::string mpath)
 {
     // process all the node's meshes (if any)
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -320,6 +337,64 @@ void processNode(aiNode* node, const aiScene* scene, Model* model, std::string m
     }
 }
 
+Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* parent)
+{
+
+    Entity* e = Scene::GetScene()->entity_mgr->CreateEntity(node->mName.C_Str());
+
+    e->SetParent(parent);
+
+    aiVector3t<float> scl;
+    aiVector3t<float> rot;
+    aiVector3t<float> pos;
+
+    node->mTransformation.Decompose(scl, rot, pos);
+
+    e->transform->position = { pos[0], pos[1], pos[3] };
+    e->transform->scale = { scl[0], scl[1], scl[2] };
+
+    // process all the node's meshes (if any)
+    for (unsigned int i = 0; i < node->mNumMeshes; i++)
+    {
+        Mesh* m = model->meshes[node->mMeshes[i]];
+        MeshRenderer* r = e->AttachComponent<MeshRenderer>();
+        r->mesh = m;
+    }
+    // then do the same for each of its children
+    for (unsigned int i = 0; i < node->mNumChildren; i++)
+    {
+        processEntity(node->mChildren[i], scene, model, e);
+    }
+
+    return e;
+}
+
+Entity* Model::Load(string path, string shaderPath)
+{
+
+    Assimp::Importer import;
+    const aiScene * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        Logger::Log("Failed to load model at  " + path + "for reason" + import.GetErrorString(), Logger::LOG_ERROR, "MODEL");
+        return nullptr;
+    }
+
+    Model* m = LoadModel(path);
+
+    filesystem::path p(path);
+
+    Entity* entity = Scene::GetScene()->entity_mgr->CreateEntity(p.stem().string());
+
+    for (int i = 0; i < scene->mRootNode->mNumChildren; ++i)
+    {
+        Entity* e = processEntity(scene->mRootNode->mChildren[i], scene, m, entity);
+    }
+
+    return entity;
+}
+
 Model* Model::LoadModel(std::string path)
 {
     Assimp::Importer import;
@@ -327,7 +402,7 @@ Model* Model::LoadModel(std::string path)
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
-        std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
+        Logger::Log("Failed to load model at  " + path + "for reason" + import.GetErrorString(), Logger::LOG_ERROR, "MODEL");
         return nullptr;
     }
     //directory = path.substr(0, path.find_last_of('/'));
@@ -339,4 +414,80 @@ Model* Model::LoadModel(std::string path)
     processNode(scene->mRootNode, scene, model, path);
 
     return model;
+}
+
+unsigned Model::GetIcon()
+{
+    if (iconID == 0 && meshes.size() > 0)
+    {
+
+        //glDeleteTextures(1, &iconID);
+
+        Shader* os = meshes[0]->material->shader;
+
+        static Shader* s = nullptr;
+
+        if (s == nullptr)
+        {
+            s = new Shader("editor/shaders/8");
+        } else
+        {
+            s->reload();
+        }
+
+        SetShader(s);
+
+        s->use();
+
+        vec3 eye = { 10,10,10 };
+        vec3 center = { 0,0,0 };
+        vec3 up = { 0,1,0 };
+
+        mat4 v = lookAt(eye, center, up);
+
+        const float radius = 10.0f;
+        float camX = sin(glfwGetTime()) * radius;
+        float camZ = cos(glfwGetTime()) * radius;
+        glm::mat4 view;
+        view = glm::lookAt(glm::vec3(camX, 0.0, camZ), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0));
+
+        mat4 p = glm::perspective(glm::radians(90.0f), 1.0f, 0.01f, 100.0f);
+
+        s->setMat4("view", view);
+        s->setMat4("projection", p);
+
+        mat4 m(1.0);
+
+        m = scale(m, vec3{ 1.0f });
+
+        s->setMat4("model", m);
+
+        static TextureColorBuffer* buffer = nullptr;
+
+        if (buffer == nullptr)
+        {
+            buffer = new TextureColorBuffer;
+            buffer->Resize({ 100,100 });
+        }
+
+        glViewport(0, 0, 100,100);
+        buffer->Bind();
+
+        glClearColor(0.25f, 0.25f, 0.25f, 0.25f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glDisable(GL_CULL_FACE);
+
+        Draw();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        iconID = buffer->texture;
+
+        if (os) {
+
+        SetShader(os);
+            }
+    }
+    return iconID;
 }

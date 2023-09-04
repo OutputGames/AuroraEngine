@@ -7,15 +7,33 @@ class Shader
 {
 public:
     unsigned int ID;
-    std::string shaderDirectory;
+    std::string shaderDirectory, name;
     bool useGeometry;
+
+    static map<string, Shader*> loadedShaders;
+
     // constructor generates the shader on the fly
     // ------------------------------------------------------------------------
     Shader(std::string shaderDirectory, bool useGeometry = false)
     {
-        this->shaderDirectory = shaderDirectory;
-        this->useGeometry = useGeometry;
-        this->reload();
+        if (!loadedShaders.count(shaderDirectory)) {
+            this->shaderDirectory = shaderDirectory;
+            this->useGeometry = useGeometry;
+            this->reload();
+            loadedShaders.insert({ shaderDirectory, this });
+
+            filesystem::path path(shaderDirectory);
+
+            name = path.string();
+
+        } else
+        {
+            Shader* preloadedShader = loadedShaders[shaderDirectory];
+
+            this->ID = preloadedShader->ID;
+            this->shaderDirectory = preloadedShader->shaderDirectory;
+            this->useGeometry = preloadedShader->useGeometry;
+        }
     }
 
     void loadSource(std::string vertexCode, std::string fragmentCode, std::string geometryCode)

@@ -14,9 +14,12 @@ using namespace nlohmann;
 
 const std::size_t Component::Type = std::hash<const char*>()(TO_STRING(Component));
 
+bool Entity::selectedEntity;
+int Entity::selected_id;
+
 std::map<std::string, std::shared_ptr<Component>(*)()> ComponentRegistry::cmp_map = std::map<std::string, std::shared_ptr<Component>(*)()>();
 
-void Transform::CopyTransforms(mat4 matrix)
+void Transform::CopyTransforms(mat4 matrix, bool isGlobal)
 {
     glm::vec3 scale;
     glm::quat rotation;
@@ -25,14 +28,73 @@ void Transform::CopyTransforms(mat4 matrix)
     glm::vec4 perspective;
     glm::decompose(matrix, scale, rotation, translation, skew, perspective);
 
-    this->position = translation;
-    this->rotation = rotation;
-    this->scale = scale;
+    glm::vec3 absPos = vec3{0};
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absPos += p->position;
+
+    glm::vec3 absScale = vec3{ 1 };
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absScale = { absScale.x * p->scale.x, absScale.y * p->scale.y, absScale.z * p->scale.z };
+
+    vec3 absRot = vec3{ 0 };
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absRot += p->GetEulerAngles();
+
+    vec3 prePos = this->position;
+    vec3 preScl = this->scale;
+
+    if (isGlobal) {
+
+        this->position = translation - absPos;
+
+        this->rotation = quat(eulerAngles(rotation)-absRot);
+        this->scale = scale / absScale;
+
+        if (parent)
+        {
+            this->position = translation - absPos;
+        }
+    } else
+    {
+        this->position = translation;
+
+        this->rotation = rotation;
+        this->scale = scale;
+    }
 }
 
 vec3 Transform::GetEulerAngles()
 {
     return glm::eulerAngles(rotation);
+}
+
+vec3 Transform::GetAbsolutePosition()
+{
+    glm::vec3 absPos = this->position;
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absPos += p->position;
+    return absPos;
+}
+
+vec3 Transform::GetAbsoluteScale()
+{
+    glm::vec3 absScale = { this->scale.x, this->scale.y, this->scale.z };
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absScale = { absScale.x * p->scale.x, absScale.y * p->scale.y, absScale.z * p->scale.z };
+    return absScale;
+}
+
+vec3 Transform::GetAbsoluteRotation()
+{
+    vec3 absRot = this->GetEulerAngles();
+    for (Transform* p = this->parent; p != nullptr; p = p->parent)
+        absRot += p->GetEulerAngles();
+    return absRot;
+}
+
+quat Transform::GetAbsoluteRotationQuat()
+{
+    return quat(GetAbsoluteRotation());
 }
 
 
@@ -47,11 +109,34 @@ mat4 Transform::GetMatrix()
     return matrix;
 }
 
+mat4 Transform::GetGlobalMatrix()
+{
+    mat4 matrix = mat4(1.0);
+
+    matrix = translate(matrix, GetAbsolutePosition());
+    matrix *= toMat4(GetAbsoluteRotationQuat());
+    matrix = glm::scale(matrix, GetAbsoluteScale());
+
+    return matrix;
+}
+
 void Transform::Reset()
 {
     position = { 0,0,0 };
     rotation = quat({0,0,0});
     scale = { 1,1,1 };
+}
+
+void Transform::Update()
+{
+    for (Transform* entity : children)
+    {
+        if (entity->entity != nullptr) {
+            if (entity->entity->enabled) {
+                entity->entity->Update();
+            }
+        }
+    }
 }
 
 bool Entity::RemoveComponent(std::string n)
@@ -105,6 +190,26 @@ void Entity::Delete()
     {
         component.get()->Unload();
     }
+    if (transform->parent) {
+        int i = 0;
+
+        for (Transform* child : transform->parent->children)
+        {
+            if (child->entity->id == id)
+            {
+                break;
+            }
+            i++;
+        }
+
+        transform->parent->children.erase(transform->parent->children.begin() + i);
+    }
+
+    for (Transform* value : transform->children)
+    {
+        value->entity->Delete();
+    }
+
    Scene::GetScene()->entity_mgr->RemoveEntity(this);
 }
 
@@ -116,12 +221,144 @@ void Entity::Init()
     }
 }
 
+void Entity::SetParent(Entity* e)
+{
+
+    if (transform->parent) {
+        int i = 0;
+
+        for (Transform* child : transform->parent->children)
+        {
+            if (child->entity->id == id)
+            {
+                break;
+            }
+            i++;
+        }
+
+        transform->parent->children.erase(transform->parent->children.begin() + i);
+    }
+    for (Transform* entity : transform->children)
+    {
+	    if (entity->entity->id == e->id)
+	    {
+            return;
+	    }
+    }
+
+    e->transform->children.push_back(this->transform);
+
+    transform->parent = e->transform;
+}
+
+void Entity::DrawTree(Entity* entity)
+{
+
+    const bool is_selected = (selected_id == entity->id);
+
+    std::string cicon = ICON_FA_CHECK;
+
+    if (!entity->enabled)
+        cicon = ICON_FA_XMARK;
+
+    if (ImGui::Button((cicon + "###" + to_string(entity->id)).c_str()))
+    {
+        entity->enabled = !entity->enabled;
+    }
+
+
+    ImGui::SameLine();
+
+    string label = entity->name + "" + to_string(entity->id);
+
+	if (ImGui::TreeNode(label.c_str()))
+	{
+        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+        if (is_selected) {
+            ImGui::SetItemDefaultFocus();
+        }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        {
+            selected_id = entity->id;
+            selectedEntity = true;
+        }
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+        {
+            ImGui::Text(entity->name.c_str());
+            ImGui::SetDragDropPayload("ENT_MOVE", &entity->id, sizeof(int));
+            ImGui::EndDragDropSource();
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENT_MOVE"))
+            {
+                int payload_n = *(const int*)payload->Data;
+
+                Scene::GetScene()->entity_mgr->entities[payload_n]->SetParent(entity);
+
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        ImGui::Indent();
+		for (Transform* child : entity->transform->children)
+		{
+			DrawTree(child->entity);
+		}
+        ImGui::Unindent();
+
+		ImGui::TreePop();
+	} else
+	{
+        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+        if (is_selected) {
+            ImGui::SetItemDefaultFocus();
+        }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        {
+            selected_id = entity->id;
+            selectedEntity = true;
+        }
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+        {
+            ImGui::Text(entity->name.c_str());
+            ImGui::SetDragDropPayload("ENT_MOVE", &entity->id, sizeof(int));
+            ImGui::EndDragDropSource();
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENT_MOVE"))
+            {
+                int payload_n = *(const int*)payload->Data;
+
+                Scene::GetScene()->entity_mgr->entities[payload_n]->SetParent(entity);
+
+            }
+            ImGui::EndDragDropTarget();
+        }
+	}
+
+}
+
 void Entity::Update()
 {
+
+    transform->entity = this;
+
+    transform->Update();
+
     for (auto const& component : components)
     {
         component.get()->Update();
     }
+}
+
+Scene::EntityMgr::EntityMgr()
+{
 }
 
 void Scene::EntityMgr::Update()
@@ -166,6 +403,8 @@ void Scene::EntityMgr::RemoveEntity(Entity* entity)
     }
 
     entities.erase(entities.begin() + id);
+
+    delete entity;
 }
 
 Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity)
@@ -342,6 +581,7 @@ Scene* Scene::CreateScene(std::string s)
     scene->name = s;
     scene->entity_mgr = new EntityMgr;
     scene->light_mgr = new LightingMgr;
+    scene->physics_factory = new PhysicsFactory;
 
     scene->light_mgr->sky = nullptr;
 

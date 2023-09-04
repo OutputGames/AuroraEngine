@@ -57,6 +57,7 @@ public:
 
     void Init() override;
     void Update() override;
+    void EngineRender() override;
 
     void LoadTexture(std::string path);
 

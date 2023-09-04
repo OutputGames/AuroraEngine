@@ -35,6 +35,7 @@ struct TextureColorBuffer : FrameBuffer
 {
     TextureColorBuffer();
     void Resize(glm::vec2 size);
+    void Unload();
     unsigned int texture;
     unsigned int renderBuffer;
 };
