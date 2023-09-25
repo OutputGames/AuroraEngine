@@ -239,38 +239,36 @@ void RenderMgr::UpdateGraphicsDevice()
             glFrontFace(GL_CW);
         }
 
-        if (render_obj->mesh->material->shader) {
-            Shader* rshader = render_obj->mesh->material->shader;
-            rshader->reload();
-            rshader->use();
+        if (render_obj->material) {
+            render_obj->material->Update();
         }
-        if (render_obj->mesh->material->GetUniform("model"))
-			render_obj->mesh->material->GetUniform("model")->m4 = render_obj->matrix;
-        if (render_obj->mesh->material->GetUniform("view"))
-			render_obj->mesh->material->GetUniform("view")->m4 = view;
-        if (render_obj->mesh->material->GetUniform("projection")) 
-			render_obj->mesh->material->GetUniform("projection")->m4 = projection;
+        if (render_obj->material->entity->material->uniforms.count("model"))
+			render_obj->material->entity->material->uniforms[("model")].m4 = render_obj->matrix;
+        if (render_obj->material->entity->material->GetUniform("view"))
+			render_obj->material->entity->material->uniforms[("view")].m4 = view;
+        if (render_obj->material->entity->material->GetUniform("projection")) 
+			render_obj->material->entity->material->uniforms[("projection")].m4 = projection;
 
-        //render_obj->mesh->material->GetUniform("albedo")->v3 = albedo;
-        //render_obj->mesh->material->GetUniform("roughness")->f = roughness;
-        if (render_obj->mesh->material->GetUniform("ao")) {
-            render_obj->mesh->material->GetUniform("ao")->f = 1.0;
+        //render_obj->material->entity->material->uniforms[("albedo")->v3 = albedo;
+        //render_obj->material->entity->material->uniforms[("roughness")->f = roughness;
+        if (render_obj->material->entity->material->GetUniform("ao")) {
+            render_obj->material->entity->material->uniforms[("ao")].f = 1.0;
         }
-        //render_obj->mesh->material->GetUniform("metallic")->f = metallic;
-        if (render_obj->mesh->material->GetUniform("viewPos")) {
-            render_obj->mesh->material->GetUniform("viewPos")->v3 = camera->position;
+        //render_obj->material->entity->material->uniforms[("metallic")->f = metallic;
+        if (render_obj->material->entity->material->GetUniform("viewPos")) {
+            render_obj->material->entity->material->uniforms[("viewPos")].v3 = camera->position;
         }
 
-        if (render_obj->mesh->material->GetUniform("cameraRight")) {
-            render_obj->mesh->material->GetUniform("cameraRight")->v3 = camera->right;
+        if (render_obj->material->entity->material->GetUniform("cameraRight")) {
+            render_obj->material->entity->material->uniforms[("cameraRight")].v3 = camera->right;
         }
 
-        if (render_obj->mesh->material->GetUniform("cameraUp")) {
-            render_obj->mesh->material->GetUniform("cameraUp")->v3 = camera->up;
+        if (render_obj->material->entity->material->GetUniform("cameraUp")) {
+            render_obj->material->entity->material->uniforms[("cameraUp")].v3 = camera->up;
         }
 
-        if (render_obj->mesh->material->GetUniform("lights[0].position")) {
-            Scene::GetScene()->light_mgr->EditMaterial(render_obj->mesh->material);
+        if (render_obj->material->entity->material->GetUniform("lights[0].position")) {
+            Scene::GetScene()->light_mgr->EditMaterial(render_obj->material);
             bfr->Bind();
         }
 
@@ -551,40 +549,40 @@ void RenderMgr::RenderEngineSpace()
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cube");
 
-                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                        renderer->model = Model::LoadModel("editor/models/cube.fbx");
+                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
+                        renderer->mesh = Mesh::Load("editor/models/cube.fbx");
                         Shader* shader = new Shader("editor/shaders/0/");
-                        renderer->model->SetShader(shader);
+                        entity->SetShader(shader);
                     }
 
                     if (ImGui::Selectable(ICON_FA_CIRCLE " Sphere"))
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Sphere");
 
-                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                        renderer->model = Model::LoadModel("editor/models/sphere.fbx");
+                       MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
+                       renderer->mesh = Mesh::Load("editor/models/sphere.fbx");
                         Shader* shader = new Shader("editor/shaders/0/");
-                        renderer->model->SetShader(shader);
+                        entity->SetShader(shader);
                     }
 
                     if (ImGui::Selectable("Cone"))
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cone");
 
-                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                        renderer->model = Model::LoadModel("editor/models/cone.fbx");
+                       MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
+                       renderer->mesh = Mesh::Load("editor/models/cone.fbx");
                         Shader* shader = new Shader("editor/shaders/0/");
-                        renderer->model->SetShader(shader);
+                        entity->SetShader(shader);
                     }
 
                     if (ImGui::Selectable("Cylinder"))
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cylinder");
 
-                        ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-                        renderer->model = Model::LoadModel("editor/models/cylinder.fbx");
+                       MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
+                       renderer->mesh = Mesh::Load("editor/models/cylinder.fbx");
                         Shader* shader = new Shader("editor/shaders/0/");
-                        renderer->model->SetShader(shader);
+                        entity->SetShader(shader);
                     }
 
                     ImGui::Separator();
@@ -721,26 +719,50 @@ void RenderMgr::RenderEngineSpace()
             string s = "Mouse Pos: " + std::to_string(mouse_pos.x) + ", " + to_string(mouse_pos.y);
             string s2 = "Mouse Pos: " + std::to_string(xpos) + ", " + to_string(ypos);
 
-            static  int nbf = 0;
+            static vector<float> deltaTimeCache;
 
-            nbf++;
+            static float ms;
 
-            static float ms=0;
+            deltaTimeCache.push_back(deltaTime);
 
-            if (deltaTime >= 1.0) { // If last prinf() was more than 1 sec ago
-                // printf and reset timer
-                ms = 1000.0 / nbf;
-                nbf = 0;
-                lastTime += 1.0;
-            }
+            int k = 0;
 
-            ms = round(1000.0 / deltaTime);
+            int n = 2;
 
-            ms *= 0.001;
+                if (glfwGetTime() != 0)
+                {
+                    k = (int)glfwGetTime() % n;
+                }
 
-            ms = round(ms);
+            int k2 = 1;
 
-            string f = "FrameTime: "+ std::to_string((int)ms);
+                if (k != 0)
+                {
+                    k2 = (int)glfwGetTime() % k;
+                }
+
+                if (k2 == 0)
+                {
+
+                    float avgdt = 0;
+
+                    for (float delta_time_cache : deltaTimeCache)
+                    {
+                        avgdt += delta_time_cache;
+                    }
+
+                    avgdt = avgdt / deltaTimeCache.size();
+
+                    ms = round(1000.0 / avgdt);
+
+                    ms *= 0.001;
+
+                    ms = round(ms);
+
+                    deltaTimeCache.clear();
+                }
+
+                string f = "FrameTime: " + std::to_string((int)ms);
                 ImGui::TextColored({ 1,0,0,1 }, f.c_str());
 
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s.c_str());
@@ -935,107 +957,17 @@ void RenderMgr::RenderEngineSpace()
 
                 entity->RenderComponents();
 
-                if (currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<ModelRenderer>() || currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()) {
+                if (currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()) {
 
 
                     if (ImGui::CollapsingHeader(ICON_FA_PAINTBRUSH " Material")) {
-
-                        if (entity->GetComponent<ModelRenderer>() && entity->GetComponent<ModelRenderer>()->model && entity->GetComponent<ModelRenderer>()->model->meshes.size() > 0) {
-                            
-                            ImGui::Separator();
-
-                            Mesh* m = currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<ModelRenderer>()->model->meshes[0];
-                            float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
-
-                            ImGui::ColorPicker3("Albedo", albed);
-
-                            m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
-
-                            ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
-                            ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
-
-                            /*
-
-                            for (pair<const string, Material::UniformData*> uniform : m->material->uniforms)
-                            {
-                                switch (uniform.second->type)
-                                {
-                                case GL_BOOL:
-                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second->b);
-                                    break;
-                                case GL_INT:
-                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second->i);
-                                    break;
-                                case GL_FLOAT:
-                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second->f);
-                                    break;
-                                case GL_FLOAT_VEC2:
-                                {
-                                    float v[2];
-
-                                    for (int i = 0; i < 2; ++i)
-                                    {
-                                        v[i] = uniform.second->v2[i];
-                                    }
-
-                                    ImGui::DragFloat2(uniform.first.c_str(), v);
-
-                                    for (int i = 0; i < 2; ++i)
-                                    {
-                                        uniform.second->v2[i] = v[i];
-                                    }
-                                }
-                                break;
-                                case GL_FLOAT_VEC3:
-                                {
-                                    float v[3];
-
-                                    for (int i = 0; i < 3; ++i)
-                                    {
-                                        v[i] = uniform.second->v3[i];
-                                    }
-
-                                    ImGui::DragFloat3(uniform.first.c_str(), v);
-
-                                    for (int i = 0; i < 3; ++i)
-                                    {
-                                        uniform.second->v3[i] = v[i];
-                                    }
-                                }
-                                break;
-                                case GL_FLOAT_VEC4:
-                                {
-                                    float v[4];
-
-                                    for (int i = 0; i < 4; ++i)
-                                    {
-                                        v[i] = uniform.second->v4[i];
-                                    }
-
-                                    ImGui::DragFloat4(uniform.first.c_str(), v);
-
-                                    for (int i = 0; i < 4; ++i)
-                                    {
-                                        uniform.second->v4[i] = v[i];
-                                    }
-                                }
-                                break;
-                                case GL_FLOAT_MAT2:
-                                    break;
-                                case GL_FLOAT_MAT3:
-                                    break;
-                                case GL_FLOAT_MAT4:
-                                    break;
-                                }
-                            }
-                            */
-                        }
 
                         if (entity->GetComponent<MeshRenderer>() && entity->GetComponent<MeshRenderer>()->mesh) {
 
                             Mesh* m = currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()->mesh;
 
-                            Shader* s = m->material->shader;
+                            Shader* os = entity->material->shader;
+                            Shader* s = entity->material->shader;
 
                             string st = "none";
 
@@ -1061,21 +993,27 @@ void RenderMgr::RenderEngineSpace()
 
                             if (s)
                             {
-                                m->material->LoadShader(s);
+                                if (s != os) {
+                                    entity->material->LoadShader(s);
+                                }
                             }
 
-                            if (m->material->uniforms.size() > 0) {
+                            if (entity->material->uniforms.size() > 0) {
 
-                                if (m->material->uniforms.count("albedo")) {
+                                if (entity->material->uniforms.count("metallic")) {
 
-                                    float albed[3] = { m->material->GetUniform("albedo")->v3.x, m->material->GetUniform("albedo")->v3.y, m->material->GetUniform("albedo")->v3.z };
+                                    float albed[3] = {
+	                                    entity->material->entity->material->uniforms[("albedo")].v3.x,
+	                                    entity->material->entity->material->uniforms[("albedo")].v3.y,
+	                                    entity->material->entity->material->uniforms[("albedo")].v3.z
+                                    };
 
                                     ImGui::ColorPicker3("Albedo", albed);
 
-                                    m->material->GetUniform("albedo")->v3 = { albed[0], albed[1], albed[2] };
+                                    entity->material->entity->material->uniforms[("albedo")].v3 = { albed[0], albed[1], albed[2] };
 
-                                    ImGui::SliderFloat("Roughness", &m->material->GetUniform("roughness")->f, 0, 1);
-                                    ImGui::SliderFloat("Metallic", &m->material->GetUniform("metallic")->f, 0, 1);
+                                    ImGui::SliderFloat("Roughness", &entity->material->entity->material->uniforms[("roughness")].f, 0, 1);
+                                    ImGui::SliderFloat("Metallic", &entity->material->entity->material->uniforms[("metallic")].f, 0, 1);
                                 }
                             }
 
@@ -1242,7 +1180,7 @@ void RenderMgr::RenderEngineSpace()
 
                 if (ImGui::Button(ICON_FA_TRASH_CAN "###file"))
                 {
-                    Engine::Filesystem::DeleteFile(selected_file.string());
+                    Filesystem::DeleteFile(selected_file.string());
                     selectedFile = false;
                 }
 
@@ -1296,7 +1234,8 @@ void RenderMgr::RenderEngineSpace()
 
                     text_editor->Render("TextEditor");
 
-                    Engine::Filesystem::WriteFileString(selected_file.string(), text_editor->GetText());
+                    if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
+						Filesystem::WriteFileString(selected_file.string(), text_editor->GetText());
 
 
                 }
@@ -1321,9 +1260,9 @@ void RenderMgr::RenderEngineSpace()
                 {
                     ImTextureID t = (ImTextureID)loadedModels[selected_file.string()]->GetIcon();
 
-                    ImGui::Image(t, { thumbnailSize, thumbnailSize });
+                    ImGui::Image(t, { thumbnailSize, thumbnailSize }, {1,1}, {0,0});
 
-                    ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 200, "");
+                    ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 500, "");
 
                     padding = thumbnailSize / 32;
                 }
@@ -1371,11 +1310,11 @@ void RenderMgr::RenderEngineSpace()
 
         ImGui::Begin(ICON_FA_FOLDER_OPEN " Asset Browser");
 
-        static std::filesystem::path assetdir = Engine::Filesystem::GetCurrentDir();
+        static std::filesystem::path assetdir = Filesystem::GetCurrentDir();
 
         if (ImGui::Button(ICON_FA_TURN_UP "###ab"))
         {
-            if (assetdir.string() != Engine::Filesystem::GetCurrentDir()) {
+            if (assetdir.string() != Filesystem::GetCurrentDir()) {
                 assetdir = assetdir.parent_path();
             }
         }
@@ -1439,6 +1378,9 @@ void RenderMgr::RenderEngineSpace()
 
             unsigned int tex = 0;
 
+            ImVec2 uv0 = { 0,0 };
+            ImVec2 uv1 = { 1,1 };
+
             if (!directory.is_directory())
             {
                 bicon = ICON_FA_FILE;
@@ -1489,7 +1431,10 @@ void RenderMgr::RenderEngineSpace()
                         loadedModels.insert({ path.string(), Model::LoadModel(path.string()) });
                     }
 
-                    //tex = loadedModels[path.string()]->GetIcon();
+                    tex = loadedModels[path.string()]->GetIcon();
+
+                    uv0 = { 1,1 };
+                    uv1 = { 0,0 };
 
                     type = "ModelFile";
                 }
@@ -1518,7 +1463,7 @@ void RenderMgr::RenderEngineSpace()
             }
             else
             {
-                clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, { 0,0 }, { 1,1 }, -1, { 0,0,0,0 }, iconColor);
+                clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, uv0, uv1, -1, { 0,0,0,0 }, iconColor);
             }
 
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
@@ -1552,7 +1497,7 @@ void RenderMgr::RenderEngineSpace()
                 {
                     selected_file = directory.path();
                     if (!directory.is_directory()) {
-                        filedata = Engine::Filesystem::ReadFileString(selected_file.string());
+                        filedata = Filesystem::ReadFileString(selected_file.string());
                         text_editor->SetText(filedata);
                     }
                     filetype = type;
@@ -1779,4 +1724,6 @@ void TextureColorBuffer::Resize(glm::vec2 size)
 
 void TextureColorBuffer::Unload()
 {
+    glDeleteRenderbuffers(1, &renderBuffer);
+    glDeleteFramebuffers(1, &id);
 }

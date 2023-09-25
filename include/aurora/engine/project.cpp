@@ -44,7 +44,7 @@ Project* Project::Load(std::string path)
 	std::filesystem::path projPath = std::filesystem::path(path);
 
 
-	Engine::Filesystem::CopyRecursive("resources/", path + "/editor/");
+	Filesystem::CopyRecursive("resources/", path + "/editor/");
 
 	std::filesystem::current_path(projPath);
 
@@ -84,7 +84,7 @@ Project* Project::Create(std::string path, std::string name)
 	std::filesystem::path projPath = std::filesystem::path(path);
 
 
-	Engine::Filesystem::CopyRecursive("resources/", path + "/editor/");
+	Filesystem::CopyRecursive("resources/", path + "/editor/");
 
 	std::filesystem::current_path(projPath);
 
@@ -166,7 +166,7 @@ void Project::LoadScenePath(std::string p)
 	}
 
 	//delete scenes[idx];
-	scenes[idx] = Scene::LoadScene(Engine::Filesystem::ReadFileString(p), false);
+	scenes[idx] = Scene::LoadScene(Filesystem::ReadFileString(p), false);
 
 	loaded_scene = s;
 }

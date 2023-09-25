@@ -7,7 +7,6 @@
 #include "glm/gtx/quaternion.hpp"
 #include "imgui/imgui.h"
 #include "graphics/lighting.hpp"
-#include "physics/physics.hpp"
 #include "utils/filesystem.hpp"
 
 using namespace nlohmann;
@@ -127,6 +126,32 @@ void Transform::Reset()
     scale = { 1,1,1 };
 }
 
+void Transform::Delete()
+{
+    if (parent) {
+        int i = 0;
+
+        for (Transform* child : parent->children)
+        {
+            if (child->entity->id == entity->id)
+            {
+                break;
+            }
+            i++;
+        }
+
+        parent->children.erase(parent->children.begin() + i);
+
+        parent = nullptr;
+    }
+
+    for (int i = 0; i < children.size(); ++i)
+    {
+        Transform* t = children[i];
+        t->entity->Delete();
+    }
+}
+
 void Transform::Update()
 {
     for (Transform* entity : children)
@@ -190,24 +215,9 @@ void Entity::Delete()
     {
         component.get()->Unload();
     }
-    if (transform->parent) {
-        int i = 0;
-
-        for (Transform* child : transform->parent->children)
-        {
-            if (child->entity->id == id)
-            {
-                break;
-            }
-            i++;
-        }
-
-        transform->parent->children.erase(transform->parent->children.begin() + i);
-    }
-
-    for (Transform* value : transform->children)
-    {
-        value->entity->Delete();
+    if (transform) {
+        transform->Delete();
+        transform = nullptr;
     }
 
    Scene::GetScene()->entity_mgr->RemoveEntity(this);
@@ -256,6 +266,13 @@ void Entity::DrawTree(Entity* entity)
 
     const bool is_selected = (selected_id == entity->id);
 
+    ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_OpenOnArrow;
+
+    ImGuiTreeNodeFlags node_flags = base_flags;
+
+    if (is_selected)
+        node_flags |= ImGuiTreeNodeFlags_Selected;
+
     std::string cicon = ICON_FA_CHECK;
 
     if (!entity->enabled)
@@ -271,7 +288,9 @@ void Entity::DrawTree(Entity* entity)
 
     string label = entity->name + "" + to_string(entity->id);
 
-	if (ImGui::TreeNode(label.c_str()))
+
+
+	if (ImGui::TreeNodeEx(label.c_str(), node_flags))
 	{
         // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
         if (is_selected) {
@@ -344,8 +363,18 @@ void Entity::DrawTree(Entity* entity)
 
 }
 
+void Entity::SetShader(Shader* shader)
+{
+    material->LoadShader(shader);
+}
+
 void Entity::Update()
 {
+
+    if (material)
+    {
+        material->entity = this;
+    }
 
     transform->entity = this;
 
@@ -529,7 +558,7 @@ Scene* Scene::LoadScene(std::string sc, bool in)
     s->name = scene["name"];
     s->entity_mgr = new Scene::EntityMgr;
     s->light_mgr = new LightingMgr;
-    s->physics_factory = new PhysicsFactory;
+   // s->physics_factory = new PhysicsFactory;
 
     s->light_mgr->sky = nullptr;
 
@@ -581,7 +610,7 @@ Scene* Scene::CreateScene(std::string s)
     scene->name = s;
     scene->entity_mgr = new EntityMgr;
     scene->light_mgr = new LightingMgr;
-    scene->physics_factory = new PhysicsFactory;
+    //scene->physics_factory = new PhysicsFactory;
 
     scene->light_mgr->sky = nullptr;
 

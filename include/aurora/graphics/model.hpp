@@ -13,6 +13,7 @@
 
 #include "texture.hpp"
 
+struct TextureColorBuffer;
 struct Mesh;
 struct Entity;
 
@@ -85,7 +86,7 @@ struct Material
 
     void Update();
 
-    Mesh* mesh;
+    Entity* entity;
 
     struct UniformData
     {
@@ -104,15 +105,15 @@ struct Material
         };
     };
 
-    std::map<std::string, UniformData*> uniforms;
+    std::map<std::string, UniformData> uniforms;
 
     UniformData* GetUniform(std::string name)
     {
-	    for (std::pair<std::string, UniformData*> uniform : uniforms)
+	    for (std::pair<std::string, UniformData> uniform : uniforms)
 	    {
 		    if (uniform.first == name)
 		    {
-                return uniform.second;
+                return &uniform.second;
                 break;
 		    }
 	    }
@@ -141,10 +142,10 @@ struct Material
 
             //printf("Uniform #%d Type: %u Name: %s\n", i, type, name);
 
-            UniformData* dat = new UniformData;
-            dat->type = type;
-            dat->m4 = mat4(0.0);
-            dat->v4 = vec4{ 0 };
+            UniformData dat = UniformData();
+            dat.type = type;
+            dat.m4 = mat4(0.0);
+            dat.v4 = vec4{ 0 };
 
             /*
             switch (type) {
@@ -212,7 +213,7 @@ struct Mesh
 	static Mesh* Upload(MeshData* data);
     static Mesh* Load(std::string path);
 
-	Material* material;
+    
 
 };
 
@@ -221,6 +222,8 @@ struct Model
 	std::vector<Mesh*> meshes;
 
     std::string path;
+
+    vec3 abmin, abmax;
 
 	void Draw();
 
@@ -240,10 +243,7 @@ struct Model
 
     void SetShader(Shader* shader)
     {
-	    for (int i = 0; i < meshes.size(); ++i)
-	    {
-            meshes[i]->material->LoadShader(shader);
-	    }
+
     }
 
     void SetVertexBoneDataToDefault(Vertex& vertex)
@@ -311,6 +311,7 @@ struct Model
 
 private:
 
+    TextureColorBuffer* buffer = nullptr;
     unsigned int iconID=0;
 
 };

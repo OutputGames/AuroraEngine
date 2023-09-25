@@ -77,6 +77,7 @@ struct LightingMgr {
     Skybox* sky=nullptr;
 	void EditMaterial(Material* material);
 	void RemoveLight(Light* light);
+    
 };
 
 #endif

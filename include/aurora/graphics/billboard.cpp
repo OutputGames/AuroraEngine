@@ -54,8 +54,8 @@ void Billboard::Init()
 
     Shader* shader = new Shader("resources/shaders/2/");
 
-    mesh->material->shader = shader;
-    mesh->material->ProcessUniforms();
+    entity->material->shader = shader;
+    entity->material->ProcessUniforms();
     */
 
 
@@ -64,7 +64,7 @@ void Billboard::Init()
 
     Shader * shader = new Shader("editor/shaders/2/");
 
-    model->SetShader(shader);
+    entity->SetShader(shader);
 
     mesh = model->meshes[0];
     
@@ -74,20 +74,21 @@ void Billboard::Update()
 {
     texture.type = "texture_diffuse";
 
-    if (mesh->material->textures.size() <= 0)
+    if (entity->material->textures.size() <= 0)
     {
-        mesh->material->textures.push_back(texture);
+        entity->material->textures.push_back(texture);
     }
     else {
-        mesh->material->textures[0] = texture;
+        entity->material->textures[0] = texture;
     }
 
-    mesh->material->GetUniform("BillboardPos")->v3 = entity->transform->position;
-    mesh->material->GetUniform("BillboardSize")->v2 = { entity->transform->scale };
-    mesh->material->GetUniform("color")->v3 = color;
+    entity->material->uniforms[("BillboardPos")].v3 = entity->transform->position;
+    entity->material->uniforms[("BillboardSize")].v2 = { entity->transform->scale };
+    entity->material->uniforms[("color")].v3 = color;
 
     RenderData* data = new RenderData;
     data->mesh = mesh;
+    data->material = entity->material;
 
     data->castShadow = false;
     data->cullBack = true;

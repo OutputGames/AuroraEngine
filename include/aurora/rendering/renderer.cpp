@@ -20,6 +20,9 @@ void MeshRenderer::Update()
 
 	render_data->castShadow = true;
 	render_data->cullBack = true;
+	render_data->material = entity->material;
+
+	entity->material->textures = mesh->data->textures;
 
 	RenderMgr::renderObjs.push_back(render_data);
 }
@@ -78,46 +81,7 @@ std::string ModelRenderer::PrintToJSON()
 
 		ms["name"] = value->data->name;
 
-		json mat;
-
-		Material* material = value->material;
-
-		mat["shaderPath"] = material->shader->shaderDirectory;
-
 		json unifs;
-
-		for (std::pair<std::string, Material::UniformData*> uniform : material->uniforms)
-		{
-			json u;
-
-			u["name"] = uniform.first;
-			u["type"] = uniform.second->type;
-
-			u["b"] = uniform.second->b;
-			u["i"] = uniform.second->i;
-			u["f"] = uniform.second->f;
-			for (int i = 0; i < 2; ++i)
-			{
-				u["v2"][i] = uniform.second->v2[i];
-			}
-
-			for (int i = 0; i < 3; ++i)
-			{
-				u["v3"][i] = uniform.second->v3[i];
-			}
-
-			for (int i = 0; i < 4; ++i)
-			{
-				u["v4"][i] = uniform.second->v4[i];
-			}
-
-
-			unifs[uniform.first] = u;
-		}
-
-		mat["uniforms"] = unifs;
-
-		ms["material"] = mat;
 
 		m["meshes"][value->data->name] = ms;
 	}
@@ -137,28 +101,6 @@ void ModelRenderer::LoadFromJSON(nlohmann::json data)
 	{
 		Mesh* mesh = model->meshes[i];
 		mesh->data->name = m["name"];
-
-		json mat = m["material"];
-
-		json unifs = mat["uniforms"];
-
-		Shader* s = new Shader(mat["shaderPath"]);
-
-		mesh->material->LoadShader(s);
-
-		for (auto unif : unifs)
-		{
-			std::string uname = unif["name"];
-			Material::UniformData* dat = mesh->material->uniforms.at(uname);
-
-			dat->b = unif["b"];
-			dat->i = unif["i"];
-			dat->f = unif["f"];
-			dat->v2 = { unif["v2"][0],unif["v2"][1]};
-			dat->v3 = { unif["v3"][0],unif["v3"][1], unif["v3"][2] };
-			dat->v4 = { unif["v4"][0],unif["v4"][1],unif["v4"][2],unif["v4"][3] };
-
-		}
 
 		i++;
 	}
@@ -188,19 +130,7 @@ void ModelRenderer::EngineRender()
 
 			//std::cout << filePath << filePathName << std::endl;
 
-			Material* m = nullptr;
-
-			if (model && model->meshes.size() > 0) {
-				m = model->meshes[0]->material;
-			}
-
 			model = Model::LoadModel(filePathName);
-
-			model->SetShader(new Shader("editor/shaders/0/"));
-
-			if (model && m != nullptr) {
-				model->meshes[0]->material = m;
-			}
 
 			// action
 		}

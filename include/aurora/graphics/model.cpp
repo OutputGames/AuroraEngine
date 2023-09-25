@@ -7,99 +7,104 @@
 Material::Material()
 {
     shader = new Shader("editor/shaders/0/");
-    mesh = nullptr;
+    entity = nullptr;
 }
 
 void Material::Update()
 {
+    if (shader) {
+        shader->reload();
+        shader->use();
 
-}
-
-void Mesh::Draw()
-{
-    std::vector<std::pair<std::string, int>> typenums;
-    for (unsigned int i = 0; i < material->textures.size(); i++)
-    {
-        glActiveTexture(GL_TEXTURE0 + i); // activate proper texture unit before binding
-        // retrieve texture number (the N in diffuse_textureN)
-        std::string number;
-        std::string name = material->textures[i].type;
-        bool couldFind = false;
-        if (typenums.size() > 0) {
-            int ctr = 0;
-            for (std::pair<std::string, int> typenum : typenums)
-            {
-                if (typenum.first == name)
+        std::vector<std::pair<std::string, int>> typenums;
+        for (unsigned int i = 0; i < textures.size(); i++)
+        {
+            glActiveTexture(GL_TEXTURE0 + i); // activate proper texture unit before binding
+            // retrieve texture number (the N in diffuse_textureN)
+            std::string number;
+            std::string name = textures[i].type;
+            bool couldFind = false;
+            if (typenums.size() > 0) {
+                int ctr = 0;
+                for (std::pair<std::string, int> typenum : typenums)
                 {
-                    typenums[ctr].second += 1;
-                    number = to_string(typenums[ctr].second);
-                    couldFind = true;
+                    if (typenum.first == name)
+                    {
+                        typenums[ctr].second += 1;
+                        number = to_string(typenums[ctr].second);
+                        couldFind = true;
+                    }
+                    ctr++;
                 }
-                ctr++;
+                if (couldFind == false)
+                {
+                    typenums.push_back({ name, 0 });
+                    number = "0";
+                }
             }
-            if (couldFind == false)
+            else
             {
                 typenums.push_back({ name, 0 });
                 number = "0";
             }
-        } else
+
+            std::string uniform = "material." + name + number;
+
+            if (shader) {
+                shader->setInt((uniform).c_str(), i);
+            }
+
+            GLenum textureTarget = GL_TEXTURE_2D;
+
+            if (textures[i].isCubemap)
+            {
+                textureTarget = GL_TEXTURE_CUBE_MAP;
+            }
+
+            glBindTexture(textureTarget, textures[i].ID);
+        }
+        glActiveTexture(GL_TEXTURE0);
+
+
+        for (std::pair<std::string, Material::UniformData> uniform : uniforms)
         {
-            typenums.push_back({ name, 0 });
-            number = "0";
-        }
+            GLenum type = uniform.second.type;
 
-        std::string uniform = "material." + name + number;
-
-        if (material->shader) {
-            material->shader->setInt((uniform).c_str(), i);
-        }
-
-        GLenum textureTarget = GL_TEXTURE_2D;
-
-        if (material->textures[i].isCubemap)
-        {
-            textureTarget = GL_TEXTURE_CUBE_MAP;
-        }
-
-        glBindTexture(textureTarget, material->textures[i].ID);
-    }
-    glActiveTexture(GL_TEXTURE0);
-
-    for (std::pair<std::string, Material::UniformData*> uniform : material->uniforms)
-    {
-        GLenum type = uniform.second->type;
-
-        switch (type) {
-        case GL_BOOL:
-            material->shader->setBool(uniform.first,uniform.second->b);
-            break;
-        case GL_INT:
-            material->shader->setInt(uniform.first, uniform.second->i);
-            break;
-        case GL_FLOAT:
-            material->shader->setFloat(uniform.first, uniform.second->f);
-            break;
-        case GL_FLOAT_VEC2:
-            material->shader->setVec2(uniform.first, uniform.second->v2);
-            break;
-        case GL_FLOAT_VEC3:
-            material->shader->setVec3(uniform.first, uniform.second->v3);
-            break;
-        case GL_FLOAT_VEC4:
-            material->shader->setVec4(uniform.first, uniform.second->v4);
-            break;
-        case GL_FLOAT_MAT2:
-            material->shader->setMat2(uniform.first, uniform.second->m2);
-            break;
-        case GL_FLOAT_MAT3:
-            material->shader->setMat3(uniform.first, uniform.second->m3);
-            break;
-        case GL_FLOAT_MAT4:
-            material->shader->setMat4(uniform.first, uniform.second->m4);
-            break;
+            switch (type) {
+            case GL_BOOL:
+                shader->setBool(uniform.first, uniform.second.b);
+                break;
+            case GL_INT:
+                shader->setInt(uniform.first, uniform.second.i);
+                break;
+            case GL_FLOAT:
+                shader->setFloat(uniform.first, uniform.second.f);
+                break;
+            case GL_FLOAT_VEC2:
+                shader->setVec2(uniform.first, uniform.second.v2);
+                break;
+            case GL_FLOAT_VEC3:
+                shader->setVec3(uniform.first, uniform.second.v3);
+                break;
+            case GL_FLOAT_VEC4:
+                shader->setVec4(uniform.first, uniform.second.v4);
+                break;
+            case GL_FLOAT_MAT2:
+                shader->setMat2(uniform.first, uniform.second.m2);
+                break;
+            case GL_FLOAT_MAT3:
+                shader->setMat3(uniform.first, uniform.second.m3);
+                break;
+            case GL_FLOAT_MAT4:
+                shader->setMat4(uniform.first, uniform.second.m4);
+                break;
+            }
         }
     }
+}
 
+void Mesh::Draw()
+{
     // draw mesh
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, data->indices.size(), GL_UNSIGNED_INT, 0);
@@ -145,12 +150,6 @@ Mesh* Mesh::Upload(MeshData* data)
     glBindVertexArray(0);
 
     mesh->data = data;
-
-    mesh->material = new Material();
-
-    mesh->material->mesh = mesh;
-
-    mesh->material->textures = data->textures;
 
 	return mesh;
 }
@@ -298,17 +297,20 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string 
     std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", mpath);
     textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
     // 2. specular maps
-    std::vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", mpath);
+    std::vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_METALNESS, "texture_metallic", mpath);
     textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
     // 3. normal maps
     std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", mpath);
     textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
     // 4. height maps
-    std::vector<Texture> heightMaps = loadMaterialTextures(material, aiTextureType_SHININESS, "texture_tcl", mpath);
+    std::vector<Texture> heightMaps = loadMaterialTextures(material, aiTextureType_SHININESS, "texture_rgh", mpath);
     textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
     std::vector<Texture> emmMaps = loadMaterialTextures(material, aiTextureType_EMISSIVE, "texture_emm", mpath);
     textures.insert(textures.end(), emmMaps.begin(), emmMaps.end());
+
+    std::vector<Texture> aoMaps = loadMaterialTextures(material, aiTextureType_AMBIENT_OCCLUSION, "texture_ao", mpath);
+    textures.insert(textures.end(), aoMaps.begin(), aoMaps.end());
 
     Mesh::MeshData* data = new Mesh::MeshData();
 
@@ -398,7 +400,7 @@ Entity* Model::Load(string path, string shaderPath)
 Model* Model::LoadModel(std::string path)
 {
     Assimp::Importer import;
-    const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+    const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenBoundingBoxes);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
@@ -408,6 +410,18 @@ Model* Model::LoadModel(std::string path)
     //directory = path.substr(0, path.find_last_of('/'));
 
     Model* model = new Model();
+
+    if (scene->mNumMeshes > 0)
+    {
+
+        aiAABB abb = scene->mMeshes[0]->mAABB;
+        aiVector3D min = abb.mMin;
+        aiVector3D max = abb.mMax;
+
+        model->abmin = { min.x, min.y, min.z };
+        model->abmax = { max.x, max.y, max.z };
+            
+    }
 
     model->path = path;
 
@@ -422,8 +436,6 @@ unsigned Model::GetIcon()
     {
 
         //glDeleteTextures(1, &iconID);
-
-        Shader* os = meshes[0]->material->shader;
 
         static Shader* s = nullptr;
 
@@ -449,9 +461,33 @@ unsigned Model::GetIcon()
         float camX = sin(glfwGetTime()) * radius;
         float camZ = cos(glfwGetTime()) * radius;
         glm::mat4 view;
-        view = glm::lookAt(glm::vec3(camX, 0.0, camZ), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0));
 
-        mat4 p = glm::perspective(glm::radians(90.0f), 1.0f, 0.01f, 100.0f);
+        vec3 abbcenter = (vec3{ abmin + abmax }) * 0.5f;
+
+        vec3 objsize = abmin - abmax;
+
+        float sz = std::max(objsize.x, objsize.y);
+
+        float fov = 22.5f;
+
+        float cv = 2.0f * tan(0.5f * DEG2RAD * fov);
+
+        float camdist = 2.0f;
+
+        float dist = camdist * sz / cv;
+
+        dist += 0.5f * sz;
+
+        vec3 pos = abbcenter - dist * vec3{ 0,0,1 };
+
+        vec3 off = { 1,-0.25,0};
+
+        off *= dist;
+
+        view = glm::lookAt(pos+off, glm::vec3(0,0, 0), glm::vec3(0.0, 1.0, 0.0));
+
+
+        mat4 p = glm::perspective(glm::radians(fov), 1.0f, 0.01f, 1000.0f);
 
         s->setMat4("view", view);
         s->setMat4("projection", p);
@@ -462,18 +498,17 @@ unsigned Model::GetIcon()
 
         s->setMat4("model", m);
 
-        static TextureColorBuffer* buffer = nullptr;
-
         if (buffer == nullptr)
         {
             buffer = new TextureColorBuffer;
-            buffer->Resize({ 100,100 });
         }
 
-        glViewport(0, 0, 100,100);
+        buffer->Resize({ 500,500 });
+
+        glViewport(0, 0, 500,500);
         buffer->Bind();
 
-        glClearColor(0.25f, 0.25f, 0.25f, 0.25f);
+        glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glDisable(GL_CULL_FACE);
@@ -484,10 +519,7 @@ unsigned Model::GetIcon()
 
         iconID = buffer->texture;
 
-        if (os) {
-
-        SetShader(os);
-            }
+        //buffer->Unload();
     }
     return iconID;
 }

@@ -1,8 +1,11 @@
 #version 330 core
-out vec4 FragColor;
 in vec2 TexCoords;
 in vec3 WorldPos;
 in vec3 Normal;
+
+layout (location = 0) out vec3 gPosition;
+layout (location = 1) out vec3 gNormal;
+layout (location = 2) out vec4 gAlbedoSpec;
 
 // material parameters
 uniform vec3 albedo;
@@ -18,6 +21,9 @@ struct Material {
     samplerCube texture_pref0;
     sampler2D texture_shad0;
     sampler2D texture_diffuse0;
+    sampler2D texture_normal0;
+    sampler2D texture_rgh0;
+    sampler2D texture_ao0;
 };
 
 uniform Material material;
@@ -36,6 +42,50 @@ uniform Light lights[light_count];
 
 uniform vec3 viewPos;
 
+vec3 getNormalFromMap()
+{
+
+    vec3 normalTex = texture(material.texture_normal0, vec2(TexCoords)).xyz;
+
+    if (normalTex.b == 0) {
+        normalTex.b = 1;
+        normalTex.r = 1 - normalTex.r;
+        normalTex.g = 1 - normalTex.g;
+    }
+    
+/*
+    if (_2cl == 1) {
+        vec2 s = 1.0/vec2(64,64);
+    
+        float offset = 0.125;
+
+        float p = _2cl;
+        float h1 = digital2cl(get2cl(TexCoords+s*vec2(offset,0)));
+        float v1 = digital2cl(get2cl(TexCoords+s*vec2(0,offset)));
+       
+   	    vec2 normal = (p - vec2(h1, v1));
+
+        normal /= 10;
+        normal += 0.5;
+
+        normalTex = vec3(normal, 1.);
+    }
+*/
+
+    vec3 tangentNormal = normalTex * 2.0 - 1.0;
+
+    vec3 Q1  = dFdx(WorldPos);
+    vec3 Q2  = dFdy(WorldPos);
+    vec2 st1 = dFdx(TexCoords);
+    vec2 st2 = dFdy(TexCoords);
+
+    vec3 N   = normalize(Normal);
+    vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
+    vec3 B  = -normalize(cross(N, T));
+    mat3 TBN = mat3(T, B, N);
+
+    return normalize(TBN * tangentNormal);
+}
 
 const float PI = 3.14159;
 // ----------------------------------------------------------------------------
@@ -137,10 +187,13 @@ void main()
     vec3 V = normalize(viewPos - WorldPos);
         vec3 R = reflect(-V, N); 
 
+    vec3 alb = pow(texture(material.texture_diffuse0, TexCoords).rgb, vec3(2.2));
+    float rgh = texture(material.texture_rgh0, TexCoords).r;
+
     // calculate reflectance at normal incidence; if dia-electric (like plastic) use F0 
     // of 0.04 and if it's a metal, use the albedo color as F0 (metallic workflow)    
     vec3 F0 = vec3(0.04); 
-    F0 = mix(F0, albedo, metallic);
+    F0 = mix(F0, alb, metallic);
 
     float shadow = 0;
 
@@ -168,8 +221,8 @@ void main()
         radiance *= light.power;
 
         // Cook-Torrance BRDF
-        float NDF = DistributionGGX(N, H, roughness);   
-        float G   = GeometrySmith(N, V, L, roughness);      
+        float NDF = DistributionGGX(N, H, rgh);   
+        float G   = GeometrySmith(N, V, L, rgh);      
         vec3 F    = fresnelSchlick(clamp(dot(H, V), 0.0, 1.0), F0);
            
         vec3 numerator    = NDF * G * F; 
@@ -193,7 +246,7 @@ void main()
         shadow += ShadowCalculation(light);
 
         if (light.enabled)
-            Lo += (kD * albedo / PI + specular) * radiance * NdotL;  // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
+            Lo += (kD * alb / PI + specular) * radiance * NdotL;  // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
     }   
     
     // ambient lighting (note that the next IBL tutorial will replace 
@@ -206,18 +259,18 @@ void main()
     //sampler2D brdfLUT = material.texture_brdf0;
     
     // ambient lighting (we now use IBL as the ambient term)
-    vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0,roughness);
+    vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0,rgh);
 	vec3 kS = F;
 	vec3 kD = 1.0 - kS;
 	
 	kD *= 1.0 - metallic;	  
 	  
 	vec3 irradiance = texture(material.texture_rad0, N).rgb;
-	vec3 diffuse    = irradiance * albedo;
+	vec3 diffuse    = irradiance * alb;
 	  
 	const float MAX_REFLECTION_LOD = 4.0;
-	vec3 prefilteredColor = textureLod(material.texture_pref0, R,  roughness * MAX_REFLECTION_LOD).rgb;   
-	vec2 envBRDF  = texture(material.texture_brdf0, vec2(max(dot(N, V), 0.0), roughness)).rg;
+	vec3 prefilteredColor = textureLod(material.texture_pref0, R,  rgh * MAX_REFLECTION_LOD).rgb;   
+	vec2 envBRDF  = texture(material.texture_brdf0, vec2(max(dot(N, V), 0.0), rgh)).rg;
 	vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
 
 
@@ -236,5 +289,5 @@ void main()
     
     //FragColor = vec4(vec3(1.0,0,0),1.0);
 
-    FragColor = vec4(vec3(texture(material.texture_diffuse0, TexCoords)), 1.0);
-}
+    FragColor = vec4(vec3(color), 1.0);
+}  

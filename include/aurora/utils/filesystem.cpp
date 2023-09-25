@@ -1,6 +1,6 @@
 #include "filesystem.hpp"
 
-std::string Engine::Filesystem::ReadFileString(std::string path)
+std::string Filesystem::ReadFileString(std::string path)
 {
       const std::ifstream input_stream(path, std::ios_base::binary);
 
@@ -14,7 +14,7 @@ std::string Engine::Filesystem::ReadFileString(std::string path)
     return buffer.str();  
 }
 
-bool Engine::Filesystem::WriteFileString(string path, string data)
+bool Filesystem::WriteFileString(string path, string data)
 {
     std::ofstream out(path);
     out << data;
@@ -22,12 +22,12 @@ bool Engine::Filesystem::WriteFileString(string path, string data)
     return true;
 }
 
-void Engine::Filesystem::DeleteFile(string path)
+void Filesystem::DeleteFile(string path)
 {
     filesystem::remove(path);
 }
 
-std::string Engine::Filesystem::GetCurrentDir()
+std::string Filesystem::GetCurrentDir()
 {
     return std::filesystem::current_path().generic_string();
 }

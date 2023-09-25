@@ -3,6 +3,7 @@
 
 #include "utils/utils.hpp"
 
+struct Material;
 class Mesh;
 
 struct RenderData
@@ -10,7 +11,8 @@ struct RenderData
     Mesh* mesh;
     mat4 matrix = mat4(1.0);
     bool castShadow = false, useDepthMask=true, cullBack=false;
-};
+    Material* material;
+}; 
 
 struct RenderMgr {
     static void InitGraphicsDevice();

@@ -153,17 +153,13 @@ void Light::CalcShadowMap()
 	{
 		if (render_obj->castShadow) {
 
-			Shader* o_shader = render_obj->mesh->material->shader;
+			simpleDepthShader->use();
 
-			render_obj->mesh->material->shader = simpleDepthShader;
-
-			render_obj->mesh->material->shader->setMat4("model", render_obj->matrix);
+			simpleDepthShader->setMat4("model", render_obj->matrix);
 
 			glCullFace(GL_FRONT);
 
 			render_obj->mesh->Draw();
-
-			render_obj->mesh->material->shader = o_shader;
 		}
 	}
 
@@ -177,7 +173,7 @@ void Skybox::Init()
 	if (skyboxMesh == nullptr)
 	{
 		skyboxMesh = Mesh::Load("editor/models/cube.fbx");
-		skyboxMesh->material->LoadShader(new Shader("editor/shaders/1/"));
+		entity->material->LoadShader(new Shader("editor/shaders/1/"));
 	}
 
 	Scene::GetScene()->light_mgr->sky = this;
@@ -188,12 +184,13 @@ void Skybox::Update()
 	RenderData* render_data = new RenderData;
 	
 	render_data->mesh = skyboxMesh;
+	render_data->material = entity->material;
 
-	if (skyboxMesh->material->textures.size() <= 0)
+	if (entity->material->textures.size() <= 0)
 	{
-		skyboxMesh->material->textures.push_back(cubemap_texture);
+		entity->material->textures.push_back(cubemap_texture);
 	}
-	render_data->mesh->material->textures[0] = cubemap_texture;
+	render_data->material->textures[0] = cubemap_texture;
 
 	mat4 mat(1.0);
 
@@ -673,13 +670,13 @@ void LightingMgr::EditMaterial(Material* material)
 		std::string light_un = "lights[" + to_string(ctr) + "]";
 		if (i < lights.size()) {
 			Light* light = lights[i];
-			material->GetUniform(light_un + ".position")->v3 = light->entity->transform->position;
-			material->GetUniform(light_un + ".direction")->v3 = light->entity->transform->GetEulerAngles();
-			material->GetUniform(light_un + ".color")->v3 = light->color;
-			material->GetUniform(light_un + ".enabled")->b = light->enabled;
-			material->GetUniform(light_un + ".power")->f = light->power;
+			material->entity->material->uniforms[(light_un + ".position")].v3 = light->entity->transform->position;
+			material->entity->material->uniforms[(light_un + ".direction")].v3 = light->entity->transform->GetEulerAngles();
+			material->entity->material->uniforms[(light_un + ".color")].v3 = light->color;
+			material->entity->material->uniforms[(light_un + ".enabled")].b = light->enabled;
+			material->entity->material->uniforms[(light_un + ".power")].f = light->power;
 
-			material->GetUniform(light_un + ".lightSpaceMatrix")->m4 = light->spaceMatrix;
+			material->entity->material->uniforms[(light_un + ".lightSpaceMatrix")].m4 = light->spaceMatrix;
 
 			if (!hasShadowMap && light->shadowMap != 0)
 			{
@@ -688,7 +685,7 @@ void LightingMgr::EditMaterial(Material* material)
 			}
 		} else
 		{
-			material->GetUniform(light_un + ".enabled")->b = false;
+			material->entity->material->uniforms[(light_un + ".enabled")].b = false;
 		}
 		ctr++;
 	}

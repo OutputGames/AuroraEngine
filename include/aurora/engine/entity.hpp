@@ -69,6 +69,7 @@ struct Transform {
     mat4 GetMatrix();
     mat4 GetGlobalMatrix();
     void Reset();
+    void Delete();
 
     void Update();
 
@@ -133,9 +134,13 @@ struct Entity
 
     Material* material;
 
+    void SetShader(Shader* shader);
+
 private:
     friend class Scene;
     friend Transform;
+
+    bool treeopen=false;
 
     void Update();
 
@@ -258,5 +263,8 @@ struct ComponentRegistry
     //typedef std::map<std::string, Component* (*)()> map_type;
     static std::map<std::string, std::shared_ptr<Component>(*)()> cmp_map;
 };
+
+template <class Comp>
+void RegisterComponent();
 
 #endif
