@@ -11,7 +11,12 @@ int main() {
     while (!RenderMgr::CheckCloseWindow()) {
         if (Project::ProjectLoaded()) {
             //Scene::GetScene()->physics_factory->Update();
-            Scene::GetScene()->entity_mgr->Update();
+            if (Scene::GetScene()->runtimePlaying) {
+                Scene::GetScene()->OnRuntimeUpdate();
+            } else
+            {
+                Scene::GetScene()->OnUpdate();
+            }
         }
         RenderMgr::UpdateGraphicsDevice();
     }

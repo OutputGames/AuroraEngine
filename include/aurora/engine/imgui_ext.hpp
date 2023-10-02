@@ -5,7 +5,7 @@
 #include "utils/utils.hpp"
 
 namespace ImGui {
-    bool FileDialog(string* path, string formats, string& filePathName, string& filePath);
+    bool FileDialog();
 }
 
 #endif

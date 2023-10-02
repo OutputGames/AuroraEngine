@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include "render.hpp"
+#include "engine/imgui_ext.hpp"
 
 CLASS_DEFINITION(Component, MeshRenderer)
 CLASS_DEFINITION(Component, ModelRenderer)
@@ -10,6 +11,7 @@ using namespace nlohmann;
 
 void MeshRenderer::Init()
 {
+	entity->material->LoadShader(Shader::CheckIfExists("editor/shaders/0"));
 }
 
 void MeshRenderer::Update()
@@ -29,6 +31,26 @@ void MeshRenderer::Update()
 
 void MeshRenderer::Unload()
 {
+}
+
+std::string MeshRenderer::PrintToJSON()
+{
+	json j;
+
+	j["mesh_path"] = mesh->data->path;
+	j["mesh_index"] = mesh->data->index;
+
+	return j.dump();
+}
+
+void MeshRenderer::LoadFromJSON(nlohmann::json data)
+{
+	mesh = Mesh::Load(data["mesh_path"], data["mesh_index"]);
+}
+
+void MeshRenderer::EngineRender()
+{
+	ImGui::FileDialog();
 }
 
 std::string MeshRenderer::GetIcon()

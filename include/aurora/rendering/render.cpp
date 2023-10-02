@@ -10,6 +10,7 @@
 #include "engine/entity.hpp"
 #include "engine/log.hpp"
 #include "engine/project.hpp"
+#include "engine/runtime/monort.hpp"
 #include "graphics/lighting.hpp"
 #include "graphics/model.hpp"
 #include "utils/filesystem.hpp"
@@ -215,18 +216,28 @@ void RenderMgr::UpdateGraphicsDevice()
     if (Project::ProjectLoaded()) {
         for (int i = 0; i < Scene::GetScene()->light_mgr->lights.size(); ++i)
         {
-            Light* l = Scene::GetScene()->light_mgr->lights[i];
-            l->CalcShadowMap();
+            PointLight* l = Scene::GetScene()->light_mgr->lights[i];
+            //l->CalcShadowMap();
         }
+        glBindFramebuffer(GL_FRAMEBUFFER, Scene::GetScene()->light_mgr->GetGeometryBuffer());
+
+        //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    }
+    else {
+        bfr->Bind();
     }
 
-    bfr->Bind();
-
-    glViewport(0, 0, oldGS.x, oldGS.y);
+    //glViewport(0, 0, oldGS.x, oldGS.y);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     for (RenderData* render_obj : renderObjs)
     {
+
+        if (!render_obj->deferred)
+            continue;
+
         if (render_obj->useDepthMask == false) {
             glDepthMask(GL_FALSE);
             glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
@@ -237,6 +248,12 @@ void RenderMgr::UpdateGraphicsDevice()
             glEnable(GL_CULL_FACE);
             glCullFace(GL_BACK);
             glFrontFace(GL_CW);
+        }
+        else
+        {
+            //glEnable(GL_CULL_FACE);
+            //glCullFace(GL_BACK);
+            //glFrontFace(GL_CW);
         }
 
         if (render_obj->material) {
@@ -269,19 +286,102 @@ void RenderMgr::UpdateGraphicsDevice()
 
         if (render_obj->material->entity->material->GetUniform("lights[0].position")) {
             Scene::GetScene()->light_mgr->EditMaterial(render_obj->material);
-            bfr->Bind();
+            //bfr->Bind();
         }
 
         render_obj->mesh->Draw();
 
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS); // set depth function back to default
+        if (render_obj->useDepthMask == false) {
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_LESS); // set depth function back to default
+        }
         glDisable(GL_CULL_FACE);
     } 
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    if (Project::ProjectLoaded())
+    {
+        bfr->Bind();
+
+        Scene::GetScene()->light_mgr->UpdateGeometryBuffer(camera->position, bfr->id);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    bfr->Bind();
+
+    for (RenderData* render_obj : renderObjs)
+    {
+
+        if (render_obj->deferred)
+            continue;
+
+        if (render_obj->useDepthMask == false) {
+            glDepthMask(GL_FALSE);
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+        }
+
+        if (render_obj->cullBack == false)
+        {
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+            glFrontFace(GL_CW);
+        } else
+        {
+            //glEnable(GL_CULL_FACE);
+            //glCullFace(GL_FRONT);
+            ////glFrontFace(GL_CW);
+            //glCullFace(GL_FRONT);
+            //glFrontFace(GL_CW);
+        }
+
+        if (render_obj->material) {
+            render_obj->material->Update();
+        }
+        if (render_obj->material->entity->material->uniforms.count("model"))
+            render_obj->material->entity->material->uniforms[("model")].m4 = render_obj->matrix;
+        if (render_obj->material->entity->material->GetUniform("view"))
+            render_obj->material->entity->material->uniforms[("view")].m4 = view;
+        if (render_obj->material->entity->material->GetUniform("projection"))
+            render_obj->material->entity->material->uniforms[("projection")].m4 = projection;
+
+        //render_obj->material->entity->material->uniforms[("albedo")->v3 = albedo;
+        //render_obj->material->entity->material->uniforms[("roughness")->f = roughness;
+        if (render_obj->material->entity->material->GetUniform("ao")) {
+            render_obj->material->entity->material->uniforms[("ao")].f = 1.0;
+        }
+        //render_obj->material->entity->material->uniforms[("metallic")->f = metallic;
+        if (render_obj->material->entity->material->GetUniform("viewPos")) {
+            render_obj->material->entity->material->uniforms[("viewPos")].v3 = camera->position;
+        }
+
+        if (render_obj->material->entity->material->GetUniform("cameraRight")) {
+            render_obj->material->entity->material->uniforms[("cameraRight")].v3 = camera->right;
+        }
+
+        if (render_obj->material->entity->material->GetUniform("cameraUp")) {
+            render_obj->material->entity->material->uniforms[("cameraUp")].v3 = camera->up;
+        }
+
+        if (render_obj->material->entity->material->GetUniform("lights[0].position")) {
+            Scene::GetScene()->light_mgr->EditMaterial(render_obj->material);
+            //bfr->Bind();
+        }
+
+        render_obj->mesh->Draw();
+
+        if (render_obj->useDepthMask == false) {
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_LESS); // set depth function back to default
+        }
+        glDisable(GL_CULL_FACE);
+    }
+
+    glBindVertexArray(0);
+
     renderObjs.clear();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     RenderEngineSpace();
 
@@ -550,7 +650,7 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cube");
 
                         MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                        renderer->mesh = Mesh::Load("editor/models/cube.fbx");
+                        renderer->mesh = Mesh::Load("editor/models/cube.fbx", 0);
                         Shader* shader = new Shader("editor/shaders/0/");
                         entity->SetShader(shader);
                     }
@@ -560,7 +660,7 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Sphere");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/sphere.fbx");
+                       renderer->mesh = Mesh::Load("editor/models/sphere.fbx", 0);
                         Shader* shader = new Shader("editor/shaders/0/");
                         entity->SetShader(shader);
                     }
@@ -570,7 +670,7 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cone");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/cone.fbx");
+                       renderer->mesh = Mesh::Load("editor/models/cone.fbx", 0);
                         Shader* shader = new Shader("editor/shaders/0/");
                         entity->SetShader(shader);
                     }
@@ -580,7 +680,7 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cylinder");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/cylinder.fbx");
+                       renderer->mesh = Mesh::Load("editor/models/cylinder.fbx", 0);
                         Shader* shader = new Shader("editor/shaders/0/");
                         entity->SetShader(shader);
                     }
@@ -591,7 +691,7 @@ void RenderMgr::RenderEngineSpace()
                     {
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Light");
 
-                        Light* light = entity->AttachComponent<Light>();
+                        PointLight* light = entity->AttachComponent<PointLight>();
 
                         light->color = vec3(1, 1, 1);
                         light->power = 1000;
@@ -636,10 +736,14 @@ void RenderMgr::RenderEngineSpace()
         static std::map<string, Model*> loadedModels{
         };
 
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar;
+        float height = ImGui::GetFrameHeight();
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
 
         //ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin(ICON_FA_GAMEPAD " Scene Window");
         {
+
             // Using a Child allow to fill all the space of the window.
             // It also alows customization
             ImGui::BeginChild("SceneRender");
@@ -652,6 +756,7 @@ void RenderMgr::RenderEngineSpace()
 
             if (oldGS.x != wsize.x && oldGS.y != wsize.y) {
                 bfr->Resize({ vview.x, vview.y });
+                currentScene->light_mgr->ResizeGeometryBuffer({ vview.x, vview.y });
                 oldGS = wsize;
             }
 
@@ -673,9 +778,12 @@ void RenderMgr::RenderEngineSpace()
 
                     filesystem::path path(payload_s);
 
-                    if (filetype == "ModelFile")
+                    if (filetype == "ModelFile" || filetype == "MeshFile")
                     {
-                        Entity* entity = Model::Load(path.string(), "editor/shaders/0");
+                        Entity* entity = Model::Load(path.string());
+
+                       //MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
+                       //renderer->mesh = Mesh::Load(path.string(), 0);
                     }
 
                     Logger::Log(path.relative_path().string()+", "+filetype, Logger::DBG, "DBG");
@@ -764,6 +872,35 @@ void RenderMgr::RenderEngineSpace()
 
                 string f = "FrameTime: " + std::to_string((int)ms);
                 ImGui::TextColored({ 1,0,0,1 }, f.c_str());
+
+
+                string pIcon = ICON_FA_PLAY;
+
+                if (currentScene->runtimePlaying)
+                {
+                    pIcon = ICON_FA_STOP;
+                }
+
+                if (ImGui::Button(pIcon.c_str()))
+                {
+
+                    if (!currentScene->runtimePlaying)
+                        currentScene->OnRuntimeStart();
+                    else
+                        currentScene->OnRuntimeUnload();
+                }
+
+                if (ImGui::Button("Compile and Run Script"))
+                {
+                    //MonoRuntime::CompileScript("editor/scripts/Dog.cs");
+                    //MonoRuntime::MonoAssemblyAurora* assembly = MonoRuntime::OpenAssembly("generated/Dog.dll");
+                    //assembly->PrintTypes();
+                    //MonoObject* instance = assembly->InstantiateClass(assembly->GetClass("", "Dog"));
+                    //assembly->CallMethod(instance);
+
+                    //MonoRuntime::coreAssembly->PrintTypes();
+                    MonoRuntime::m_data->coreAssembly->InvokeStaticMethod("Entity:Create()");
+                }
 
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s.c_str());
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s2.c_str());
@@ -1000,7 +1137,7 @@ void RenderMgr::RenderEngineSpace()
 
                             if (entity->material->uniforms.size() > 0) {
 
-                                if (entity->material->uniforms.count("metallic")) {
+                                if (entity->material->uniforms.count("albedo")) {
 
                                     float albed[3] = {
 	                                    entity->material->entity->material->uniforms[("albedo")].v3.x,
@@ -1012,8 +1149,10 @@ void RenderMgr::RenderEngineSpace()
 
                                     entity->material->entity->material->uniforms[("albedo")].v3 = { albed[0], albed[1], albed[2] };
 
+                                    
                                     ImGui::SliderFloat("Roughness", &entity->material->entity->material->uniforms[("roughness")].f, 0, 1);
                                     ImGui::SliderFloat("Metallic", &entity->material->entity->material->uniforms[("metallic")].f, 0, 1);
+                                    
                                 }
                             }
 
@@ -1258,6 +1397,7 @@ void RenderMgr::RenderEngineSpace()
 
                 } else if (filetype == "ModelFile")
                 {
+                    /*
                     ImTextureID t = (ImTextureID)loadedModels[selected_file.string()]->GetIcon();
 
                     ImGui::Image(t, { thumbnailSize, thumbnailSize }, {1,1}, {0,0});
@@ -1265,6 +1405,7 @@ void RenderMgr::RenderEngineSpace()
                     ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 500, "");
 
                     padding = thumbnailSize / 32;
+                    */
                 }
             }
         }
@@ -1274,7 +1415,7 @@ void RenderMgr::RenderEngineSpace()
 
         for (Entity* entity : currentScene->entity_mgr->entities)
         {
-            if (!entity->transform->parent) {
+            if (entity->transform->parent == nullptr) {
                 /*
                 const bool is_selected = (Entity::selected_id == entity->id);
 
@@ -1328,6 +1469,34 @@ void RenderMgr::RenderEngineSpace()
         ImVec2 windowSize = ImGui::GetWindowSize();
 
         ImGui::BeginChild("MainFiles", { windowSize.x, (windowSize.y * 0.75f) });
+
+        static bool rightclickmenu_open = false;
+
+        if (ImGui::IsWindowHovered())
+        {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+            {
+                //rightclickmenu_open = true;
+            }
+        }
+
+        if (rightclickmenu_open)
+        {
+
+            ImGui::SetCursorPos(ImGui::GetMousePos());
+
+            ImGui::Begin("Context Menu");
+
+            ImGui::Text("test");
+
+            ImGui::End();
+
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            {
+                rightclickmenu_open = false;
+            }
+
+        }
 
         static float padding = 16.0f;
         static float thumbnailSize = 64;
@@ -1404,7 +1573,7 @@ void RenderMgr::RenderEngineSpace()
                     ploaded = true;
                     type = "ImageFile";
                 }
-                else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c" || ext == ".glsl" || ext == ".lua" || ext == ".dll" || ext == ".pdb")
+                else if (ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c" || ext == ".glsl" || ext == ".lua" || ext == ".cs")
                 {
                     type = "CodeFile";
                 }
@@ -1416,7 +1585,7 @@ void RenderMgr::RenderEngineSpace()
                 {
                     type = "TextFile";
                 }
-                else if (ext == ".exe" || ext == ".app")
+                else if (ext == ".exe" || ext == ".app" || ext == ".dll")
                 {
                     type = "Executable";
                 }
@@ -1426,15 +1595,19 @@ void RenderMgr::RenderEngineSpace()
                 }
                 else if (ext == ".fbx" || ext == ".dae")
                 {
+                    /*
                     if (!loadedModels.count(path.string()))
                     {
                         loadedModels.insert({ path.string(), Model::LoadModel(path.string()) });
                     }
 
                     tex = loadedModels[path.string()]->GetIcon();
+                    
 
                     uv0 = { 1,1 };
                     uv1 = { 0,0 };
+
+*/
 
                     type = "ModelFile";
                 }
@@ -1466,16 +1639,6 @@ void RenderMgr::RenderEngineSpace()
                 clicked = ImGui::ImageButton((ImTextureID)tex, { thumbnailSize,thumbnailSize }, uv0, uv1, -1, { 0,0,0,0 }, iconColor);
             }
 
-            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-            {
-                ImGui::Image((ImTextureID)tex, { 100,100 });
-
-                const wchar_t* pl = path.c_str();
-
-                ImGui::SetDragDropPayload("FILE_MOVE", pl, (wcslen(pl)+1) * (sizeof(wchar_t)));
-                ImGui::EndDragDropSource();
-            }
-
             if (ImGui::IsItemHovered())
             {
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -1490,6 +1653,11 @@ void RenderMgr::RenderEngineSpace()
                         } else if (type == "SceneFile")
                         {
                             Project::GetProject()->LoadScenePath(path.string());
+                        } else
+                        {
+                            if (type != "CodeFile") {
+                                system(("start " + path.string()).c_str());
+                            }
                         }
                     }
                 }
@@ -1497,12 +1665,26 @@ void RenderMgr::RenderEngineSpace()
                 {
                     selected_file = directory.path();
                     if (!directory.is_directory()) {
-                        filedata = Filesystem::ReadFileString(selected_file.string());
-                        text_editor->SetText(filedata);
+                        if (type == "CodeFile") {
+                            filedata = Filesystem::ReadFileString(selected_file.string());
+                            text_editor->SetText(filedata);
+                        }
                     }
                     filetype = type;
                     selectedFile = true;
                     Entity::selectedEntity = false;
+                }
+
+                if (ImGui::GetDragDropPayload() == nullptr) {
+                    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+                    {
+                        ImGui::Image((ImTextureID)tex, { 100,100 });
+
+                        const wchar_t* pl = path.c_str();
+
+                        ImGui::SetDragDropPayload("FILE_MOVE", pl, (wcslen(pl) + 1) * (sizeof(wchar_t)));
+                        ImGui::EndDragDropSource();
+                    }
                 }
 
             }
@@ -1548,9 +1730,9 @@ void RenderMgr::RenderEngineSpace()
                     break;
                 }
 
-                //ImGui::TextColored(col, logged_entry.first.second.c_str());
+                ImGui::TextColored(col, logged_entry.first.second.c_str());
 
-                //ImGui::NextColumn();
+                ImGui::NextColumn();
 
                 loggedents.insert({ logged_entry.first.second, logged_entry.second });
             }
@@ -1666,6 +1848,16 @@ glm::vec2 RenderMgr::GetSceneWinSize()
 bool RenderMgr::CheckMouseInputs()
 {
     return mouse_cond;
+}
+
+float RenderMgr::GetDeltaTime()
+{
+    static double lastTime = glfwGetTime();
+
+    // Compute time difference between current and last frame
+    double currentTime = glfwGetTime();
+    float deltaTime = float(currentTime - lastTime);
+    return deltaTime;
 }
 
 FrameBuffer::FrameBuffer()

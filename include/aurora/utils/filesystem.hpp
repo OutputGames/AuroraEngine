@@ -6,6 +6,7 @@
 struct Filesystem {
     static std::string ReadFileString(std::string path);
     static bool WriteFileString(string path, string data);
+    static char* ReadFileBytes(string path, int& dataSize);
     static void DeleteFile(string path);
     static std::string GetCurrentDir();
     static void CopyRecursive(const filesystem::path& src, const filesystem::path& target) noexcept

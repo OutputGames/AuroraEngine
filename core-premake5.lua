@@ -2,7 +2,7 @@ project "AuroraRuntime"
 
     --os.rmdir("generated\\")
 
-   kind "StaticLib"
+   kind "SharedLib"
    language "C++"
    cppdialect "C++17"
    targetdir "bin\\%{cfg.buildcfg}"
@@ -10,21 +10,25 @@ project "AuroraRuntime"
    compileas "C++"
    staticruntime "on"
 
-   defines {"GRAPHICS_OPENGL"}
+   defines {"GRAPHICS_OPENGL", 'MONO_HOME="C:/Program Files/Mono/"'}
 
    files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp" }
 
    files {"resources\\**", "**.json", "lib\\**"}
 
-   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet"}
+   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet", "C:/Program Files/Mono/include/mono-2.0"}
 
    links {
-        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib"
+        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib","mono-2.0-sgen.lib"
     }
+
+    --filter { 'system:windows' }
+        --postbuildcommands { "copy C:/Program Files/Mono/bin/mono-2.0-sgen.dll bin\\%{cfg.buildcfg}\\mono-2.0-sgen.dll" }
 
     libdirs {
         "lib\\",
-        "lib\\glfw\\lib-vc2022"
+        "lib\\glfw\\lib-vc2022",
+        "C:/Program Files/Mono/lib"
     }
             --for 32 bit use these library paths
     filter "architecture:x86"

@@ -17,6 +17,9 @@ public:
     void Init() override;
     void Update() override;
     void Unload() override;
+    std::string PrintToJSON() override;
+    void LoadFromJSON(nlohmann::json data) override;
+    void EngineRender() override;
 
 	std::string icon = ICON_FA_CUBE;
 

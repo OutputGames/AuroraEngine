@@ -1,5 +1,7 @@
 #include "aurora.hpp"
 
+#include "engine/runtime/monort.hpp"
+
 template <class Comp>
 void RegisterComponent()
 {
@@ -28,13 +30,15 @@ void InitEngine()
     //std::cout << "Started Aurora at " << Engine::Filesystem::GetCurrentDir() << std::endl;
 
     RegisterComponent<Billboard>();
-    RegisterComponent<Light>();
+    RegisterComponent<PointLight>();
     RegisterComponent<MeshRenderer>();
     RegisterComponent<ModelRenderer>();
     RegisterComponent<Skybox>();
+    RegisterComponent<ScriptComponent>();
     //RegisterComponent<Rigidbody>();
 
     RenderMgr::InitGraphicsDevice();
+    MonoRuntime::Initialize();
 
     //Project* p = Project::Create("C:/Users/chris/Downloads/TestProject");
 

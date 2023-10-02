@@ -13,9 +13,9 @@
 
 #include "texture.hpp"
 
-struct TextureColorBuffer;
-struct Mesh;
-struct Entity;
+struct AURORA_API TextureColorBuffer;
+struct AURORA_API Mesh;
+struct AURORA_API Entity;
 
 namespace Engine
 {
@@ -50,7 +50,7 @@ public:
 
 #define MAX_BONE_INFLUENCE 4
 
-struct Vertex {
+struct AURORA_API Vertex {
 	// position
 	glm::vec3 Position;
 	// normal
@@ -67,7 +67,7 @@ struct Vertex {
 	float m_Weights[MAX_BONE_INFLUENCE];
 };
 
-struct BoneInfo
+struct AURORA_API BoneInfo
 {
 	/*id is index in finalBoneMatrices*/
 	int id;
@@ -77,7 +77,7 @@ struct BoneInfo
 
 };
 
-struct Material
+struct AURORA_API Material
 {
 
 	std::vector<Texture> textures;
@@ -88,7 +88,7 @@ struct Material
 
     Entity* entity;
 
-    struct UniformData
+    struct AURORA_API UniformData
     {
         GLenum type;
         union
@@ -183,6 +183,7 @@ struct Material
 
             uniforms.insert({ name, dat });
         }
+
     }
 
     void LoadShader(Shader* s)
@@ -194,16 +195,18 @@ struct Material
 	Shader* shader;
 };
 
-struct Mesh
+struct AURORA_API Mesh
 {
 	unsigned int VBO, VAO, EBO;
 
-	struct MeshData
+	struct AURORA_API MeshData
 	{
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
 		std::vector<Texture> textures;
         std::string name;
+        std::string path;
+        int index;
 	};
 
 	MeshData* data;
@@ -211,13 +214,13 @@ struct Mesh
 	void Draw();
 
 	static Mesh* Upload(MeshData* data);
-    static Mesh* Load(std::string path);
+    static Mesh* Load(std::string path, int meshIndex);
 
     
 
 };
 
-struct Model
+struct AURORA_API Model
 {
 	std::vector<Mesh*> meshes;
 
@@ -271,7 +274,7 @@ struct Model
         }
     }
 
-    static Entity* Load(string path, string shaderPath="");
+    static Entity* Load(string path);
 
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene)
     {

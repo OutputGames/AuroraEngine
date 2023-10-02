@@ -7,6 +7,8 @@
 #include "glm/gtx/quaternion.hpp"
 #include "imgui/imgui.h"
 #include "graphics/lighting.hpp"
+#include "rendering/render.hpp"
+#include "runtime/monort.hpp"
 #include "utils/filesystem.hpp"
 
 using namespace nlohmann;
@@ -263,6 +265,8 @@ void Entity::SetParent(Entity* e)
 
 void Entity::DrawTree(Entity* entity)
 {
+    if (entity == nullptr)
+        return;
 
     const bool is_selected = (selected_id == entity->id);
 
@@ -286,7 +290,7 @@ void Entity::DrawTree(Entity* entity)
 
     ImGui::SameLine();
 
-    string label = entity->name + "" + to_string(entity->id);
+    string label = entity->name + "###" + to_string(entity->id);
 
 
 
@@ -490,7 +494,58 @@ std::string Component::GetIcon()
     return this->icon;
 }
 
-void Scene::Update()
+void Scene::OnRuntimeStart()
+{
+    OnUnload();
+    runtimePlaying = true;
+    {
+        MonoRuntime::OnRuntimeStart(this);
+
+        auto ents = entity_mgr->GetEntitiesWithComponent<ScriptComponent>();
+
+        for (auto ent : ents)
+        {
+            MonoRuntime::OnCreateComponent(ent);
+        }
+
+    }
+}
+
+void Scene::OnRuntimeUpdate()
+{
+    entity_mgr->Update();
+
+    auto ents = entity_mgr->GetEntitiesWithComponent<ScriptComponent>();
+
+    float dt = RenderMgr::GetDeltaTime();
+
+    for (auto ent : ents)
+    {
+        MonoRuntime::OnUpdateComponent(ent, dt);
+    }
+
+    for (Entity* entity : entity_mgr->entities)
+    {
+        MonoRuntime::OnUpdateEntity(entity, dt);
+    }
+
+}
+
+void Scene::OnRuntimeUnload()
+{
+    runtimePlaying = false;
+    OnStart();
+}
+
+void Scene::OnStart()
+{
+}
+
+void Scene::OnUnload()
+{
+}
+
+void Scene::OnUpdate()
 {
     entity_mgr->Update();
 }
@@ -529,6 +584,34 @@ std::string Scene::SaveScene()
 
         e["components"] = c;
 
+        json m;
+
+        json mu;
+
+        for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
+        {
+            json u;
+
+            Material::UniformData* uniformD = &uniform.second;
+
+            u["type"] = uniformD->type;
+        	u["b"] = uniformD->b;
+            u["i"] = uniformD->i;
+            u["f"] = uniformD->f;
+            u["v2"] = { uniformD->v2.x, uniformD->v2.y };
+            u["v3"] = { uniformD->v3.x, uniformD->v3.y, uniformD->v3.z };
+            u["v4"] = { uniformD->v4.x, uniformD->v4.y, uniformD->v4.z, uniformD->v4.w };
+
+
+            mu[uniform.first] = u;
+
+        }
+
+        m["uniforms"] = mu;
+        m["shader"] = entity->material->shader->shaderDirectory;
+
+        e["material"] = m;
+
         entities[entity->name] = e;
     }
 
@@ -547,7 +630,12 @@ std::string Scene::SaveScene()
 
 Scene* Scene::GetScene()
 {
-    return Project::GetProject()->loaded_scene;
+    if (Project::GetProject()) {
+        return Project::GetProject()->loaded_scene;
+    } else
+    {
+        return nullptr;
+    }
 }
 
 Scene* Scene::LoadScene(std::string sc, bool in)
@@ -595,6 +683,27 @@ Scene* Scene::LoadScene(std::string sc, bool in)
         }
 
         e->enabled = ej["enabled"];
+
+        e->material->LoadShader(Shader::CheckIfExists(ej["material"]["shader"]));
+
+        auto unifs = ej["material"]["uniforms"].get<json::object_t>();
+
+        for (auto unif : unifs)
+        {
+            if (e->material->uniforms.count(unif.first))
+            {
+                Material::UniformData ud = e->material->uniforms[unif.first];
+                ud.type = unif.second["type"];
+                ud.b = unif.second["b"];
+                ud.i = unif.second["i"];
+                ud.f = unif.second["f"];
+                ud.v2 = { unif.second["v2"][0],unif.second["v2"][1]};
+                ud.v3 = { unif.second["v3"][0],unif.second["v3"][1],unif.second["v3"][2]};
+                ud.v4 = { unif.second["v4"][0],unif.second["v4"][1],unif.second["v4"][2],unif.second["v4"][3]};
+                e->material->uniforms[unif.first] = ud;
+            }
+        }
+
     }
 
     return s;
@@ -611,8 +720,33 @@ Scene* Scene::CreateScene(std::string s)
     scene->entity_mgr = new EntityMgr;
     scene->light_mgr = new LightingMgr;
     //scene->physics_factory = new PhysicsFactory;
+    {
+        Entity* entity = scene->entity_mgr->CreateEntity("Skybox");
 
-    scene->light_mgr->sky = nullptr;
+        Skybox* sb = entity->AttachComponent<Skybox>();
+
+        sb->LoadTexture("editor/textures/newport_loft.hdr");
+
+        entity->Init();
+
+        scene->light_mgr->sky = sb;
+    }
+
+    {
+        Entity* entity = scene->entity_mgr->CreateEntity("Light");
+
+        PointLight* light = entity->AttachComponent<PointLight>();
+
+        light->color = vec3(1, 1, 1);
+        light->power = 1000;
+        light->enabled = true;
+
+        entity->Init();
+
+        entity->transform->position = { 10,10,10 };
+
+        scene->light_mgr->lights.push_back(light);
+    }
 
     std::string projFilePath =  "resources/scenes/" + s + ".auscene";
 
@@ -653,4 +787,19 @@ template <class ComponentType>
 int Entity::RemoveComponents()
 {
     return 0;
+}
+
+template <class T>
+vector<Entity*> Scene::EntityMgr::GetEntitiesWithComponent()
+{
+    vector<Entity*> cmpEntities;
+
+    for (Entity* entity : entities)
+    {
+        if (entity->GetComponent<T>()) {
+            cmpEntities.push_back(entity);
+        }
+    }
+
+    return cmpEntities;
 }

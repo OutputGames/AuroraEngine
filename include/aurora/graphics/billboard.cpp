@@ -92,6 +92,7 @@ void Billboard::Update()
 
     data->castShadow = false;
     data->cullBack = true;
+    data->deferred = false;
 
     RenderMgr::renderObjs.push_back(data);
 
@@ -113,7 +114,7 @@ void Billboard::EngineRender()
 
     string filePathName="",filePath="";
 
-    bool opened = ImGui::FileDialog(&s, ".png,.jpg", filePathName, filePath);
+    bool opened = false;
 
     if (opened)
     {

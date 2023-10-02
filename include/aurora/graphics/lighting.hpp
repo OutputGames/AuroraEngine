@@ -6,15 +6,15 @@
 
 
 
-class Light : public Component 
+class PointLight : public Component 
 {
-    CLASS_DECLARATION(Light)
+    CLASS_DECLARATION(PointLight)
 public:
-    Light(std::string&& initialValue)
+    PointLight(std::string&& initialValue)
         : Component(move(initialValue)) {
     }
 
-    Light() = default;
+    PointLight() = default;
 
     void Init() override;
     void Update() override;
@@ -73,11 +73,16 @@ private:
 };
 
 struct LightingMgr {
-	std::vector<Light*> lights;
+	std::vector<PointLight*> lights;
     Skybox* sky=nullptr;
 	void EditMaterial(Material* material);
-	void RemoveLight(Light* light);
-    
+	void RemoveLight(PointLight* light);
+    unsigned int GetGeometryBuffer();
+    void UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer);
+    void ResizeGeometryBuffer(vec2 size);
+private:
+    unsigned int gBuffer=0;
+    unsigned int gPosition, gNormal, gAlbedoSpec, gCombined;
 };
 
 #endif

@@ -31,7 +31,7 @@ uniform Material material;
 
 void main()
 {    
-    FragColor = texture(material.texture_cubemap, TexCoords);
+    //FragColor = texture(material.texture_cubemap, TexCoords);
     
-    //FragColor = vec4(GetEnvironmentLight(TexCoords),1.0);
+    FragColor = vec4(GetEnvironmentLight(TexCoords),1.0);
 }

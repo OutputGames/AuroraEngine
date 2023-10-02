@@ -40,6 +40,7 @@ void Project::Save()
 Project* Project::Load(std::string path)
 {
 	Project* p = new Project;
+	Shader::loadedShaders.clear();
 
 	std::filesystem::path projPath = std::filesystem::path(path);
 

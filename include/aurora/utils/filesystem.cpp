@@ -22,6 +22,34 @@ bool Filesystem::WriteFileString(string path, string data)
     return true;
 }
 
+char* Filesystem::ReadFileBytes(string path, int& ds)
+{
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+
+    if (!stream)
+    {
+        // Failed to open the file
+        return nullptr;
+    }
+
+    std::streampos end = stream.tellg();
+    stream.seekg(0, std::ios::beg);
+    uint32_t size = end - stream.tellg();
+
+    if (size == 0)
+    {
+        // File is empty
+        return nullptr;
+    }
+
+    char* buffer = new char[size];
+    stream.read((char*)buffer, size);
+    stream.close();
+
+    ds = size;
+    return buffer;
+}
+
 void Filesystem::DeleteFile(string path)
 {
     filesystem::remove(path);

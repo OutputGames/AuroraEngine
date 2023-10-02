@@ -67,3 +67,7 @@ group ""
 group "Misc"
 	include "engine-premake5.lua"
 group ""
+
+group "ScriptCore"
+	include "scriptcore-premake5.lua"
+group ""

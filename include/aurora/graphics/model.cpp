@@ -108,7 +108,6 @@ void Mesh::Draw()
     // draw mesh
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, data->indices.size(), GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
 }
 
 Mesh* Mesh::Upload(MeshData* data)
@@ -154,11 +153,11 @@ Mesh* Mesh::Upload(MeshData* data)
 	return mesh;
 }
 
-Mesh* Mesh::Load(std::string path)
+Mesh* Mesh::Load(std::string path, int meshIndex)
 {
     Model* temp_mdl = Model::LoadModel(path);
 
-    return temp_mdl->meshes[0];
+    return temp_mdl->meshes[meshIndex];
 }
 
 void Model::Draw()
@@ -217,7 +216,7 @@ std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, s
     return textures;
 }
 
-Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string mpath)
+Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string mpath,int meshIndex)
 {
     // data to fill
     std::vector<Vertex> vertices;
@@ -318,6 +317,8 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string 
     data->indices = indices;
     data->textures = textures;
     data->name = mesh->mName.C_Str();
+    data->index = meshIndex;
+    data->path = model->path;
     
 
     // return a mesh object created from the extracted mesh data
@@ -330,7 +331,7 @@ void Model::processNode(aiNode* node, const aiScene* scene, Model* model, std::s
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
     {
         aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        model->meshes.push_back(processMesh(mesh, scene, model, mpath));
+        model->meshes.push_back(processMesh(mesh, scene, model, mpath,node->mMeshes[i]));
     }
     // then do the same for each of its children
     for (unsigned int i = 0; i < node->mNumChildren; i++)
@@ -353,7 +354,7 @@ Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* 
     node->mTransformation.Decompose(scl, rot, pos);
 
     e->transform->position = { pos[0], pos[1], pos[3] };
-    e->transform->scale = { scl[0], scl[1], scl[2] };
+    //e->transform->scale = { scl[0], scl[1], scl[2] };
 
     // process all the node's meshes (if any)
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -362,6 +363,9 @@ Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* 
         MeshRenderer* r = e->AttachComponent<MeshRenderer>();
         r->mesh = m;
     }
+
+    e->Init();
+
     // then do the same for each of its children
     for (unsigned int i = 0; i < node->mNumChildren; i++)
     {
@@ -371,7 +375,7 @@ Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* 
     return e;
 }
 
-Entity* Model::Load(string path, string shaderPath)
+Entity* Model::Load(string path)
 {
 
     Assimp::Importer import;
@@ -391,7 +395,8 @@ Entity* Model::Load(string path, string shaderPath)
 
     for (int i = 0; i < scene->mRootNode->mNumChildren; ++i)
     {
-        Entity* e = processEntity(scene->mRootNode->mChildren[i], scene, m, entity);
+        Entity* e = processEntity (scene->mRootNode->mChildren[i], scene, m, entity);
+
     }
 
     return entity;

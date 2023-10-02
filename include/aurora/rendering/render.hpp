@@ -3,18 +3,18 @@
 
 #include "utils/utils.hpp"
 
-struct Material;
+struct AURORA_API Material;
 class Mesh;
 
-struct RenderData
+struct AURORA_API RenderData
 {
     Mesh* mesh;
     mat4 matrix = mat4(1.0);
-    bool castShadow = false, useDepthMask=true, cullBack=false;
+    bool castShadow = false, useDepthMask=true, cullBack=false, deferred=true;
     Material* material;
 }; 
 
-struct RenderMgr {
+struct AURORA_API RenderMgr {
     static void InitGraphicsDevice();
     static void UpdateGraphicsDevice();
     static void DestroyGraphicsDevice();
@@ -25,15 +25,16 @@ struct RenderMgr {
     static glm::vec2 GetSceneWinSize();
     static bool CheckMouseInputs();
     static std::vector<RenderData*> renderObjs;
+    static float GetDeltaTime();
 };
 
-struct FrameBuffer {
+struct AURORA_API FrameBuffer {
     FrameBuffer();
     void Bind();
     unsigned int id;
 };
 
-struct TextureColorBuffer : FrameBuffer
+struct AURORA_API TextureColorBuffer : FrameBuffer
 {
     TextureColorBuffer();
     void Resize(glm::vec2 size);

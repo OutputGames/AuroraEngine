@@ -5,7 +5,7 @@
 
 namespace Engine
 {
-    struct InputMgr
+    AURORA_API struct InputMgr
     {
         static bool IsKeyUp(int key);
         static bool IsKeyDown(int key);

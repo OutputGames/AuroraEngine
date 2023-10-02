@@ -16,23 +16,40 @@ public:
     // ------------------------------------------------------------------------
     Shader(std::string shaderDirectory, bool useGeometry = false)
     {
-        if (!loadedShaders.count(shaderDirectory)) {
-            this->shaderDirectory = shaderDirectory;
+
+        string shaderDir = filesystem::path(shaderDirectory).string();
+
+        if (!loadedShaders.count(shaderDir)) {
+            this->shaderDirectory = shaderDir;
             this->useGeometry = useGeometry;
             this->reload();
-            loadedShaders.insert({ shaderDirectory, this });
+            loadedShaders.insert({ shaderDir, this });
 
-            filesystem::path path(shaderDirectory);
-
-            name = path.string();
+            name = shaderDir;
 
         } else
         {
-            Shader* preloadedShader = loadedShaders[shaderDirectory];
+            Shader* preloadedShader = loadedShaders[shaderDir];
 
             this->ID = preloadedShader->ID;
             this->shaderDirectory = preloadedShader->shaderDirectory;
+            this->name = preloadedShader->name;
             this->useGeometry = preloadedShader->useGeometry;
+        }
+    }
+
+    static Shader* CheckIfExists(string shaderDirectory)
+    {
+        string shaderDir = filesystem::path(shaderDirectory).string();
+
+        if (!loadedShaders.count(shaderDir)) {
+            return new Shader(shaderDirectory);
+        }
+        else
+        {
+            Shader* preloadedShader = loadedShaders[shaderDir];
+
+            return preloadedShader;
         }
     }
 

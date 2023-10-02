@@ -11,8 +11,8 @@
 
 #define TO_STRING( x ) #x
 
-struct PhysicsFactory;
-struct LightingMgr;
+struct AURORA_API PhysicsFactory;
+struct AURORA_API LightingMgr;
 class Component;
 
 
@@ -53,7 +53,7 @@ public:\
     }\
     classname() = default; \
 
-struct Transform {
+struct AURORA_API Transform {
     vec3 position;
     quat rotation;
     vec3 scale=vec3(1.0);
@@ -82,7 +82,7 @@ struct Transform {
 
 };
 
-struct Entity
+struct AURORA_API Entity
 {
     Transform* transform;
 
@@ -222,9 +222,9 @@ public:
     bool enabled = true;
 };
 
-struct Scene
+struct AURORA_API Scene
 {
-    struct EntityMgr
+    struct AURORA_API EntityMgr
     {
         EntityMgr();
 
@@ -234,6 +234,9 @@ struct Scene
     	void RemoveEntity(Entity* entity);
     	Entity* DuplicateEntity(Entity* entity);
 
+        template <class T>
+        vector<Entity*> GetEntitiesWithComponent();
+
         vector<Entity*> entities;
     };
 
@@ -241,7 +244,13 @@ struct Scene
     LightingMgr* light_mgr;
     PhysicsFactory* physics_factory;
 
-    void Update();
+    void OnRuntimeStart();
+    void OnRuntimeUpdate();
+    void OnRuntimeUnload();
+
+    void OnStart();
+    void OnUpdate();
+    void OnUnload();
     std::string SaveScene();
     static Scene* GetScene();
     static Scene* LoadScene(std::string s, bool isNew);
@@ -250,13 +259,14 @@ struct Scene
     void SetPath(std::string p);
 
     std::string name;
+    bool paused=false, runtimePlaying=false;
 
 private:
     friend class Project;
     std::string path;
 };
 
-struct ComponentRegistry
+struct AURORA_API ComponentRegistry
 {
     template<typename T> static std::shared_ptr<Component> createInstance() { return make_shared< T >(); }
 

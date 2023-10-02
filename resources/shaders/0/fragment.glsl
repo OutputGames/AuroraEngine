@@ -1,11 +1,13 @@
 #version 330 core
+
+layout (location = 0) out vec4 gPosition;
+layout (location = 1) out vec4 gNormal;
+layout (location = 2) out vec4 gAlbedoSpec;
+layout (location = 3) out vec4 gCombined;
+
 in vec2 TexCoords;
 in vec3 WorldPos;
 in vec3 Normal;
-
-layout (location = 0) out vec3 gPosition;
-layout (location = 1) out vec3 gNormal;
-layout (location = 2) out vec4 gAlbedoSpec;
 
 // material parameters
 uniform vec3 albedo;
@@ -181,113 +183,8 @@ float ShadowCalculation(Light light)
 
 void main()
 {		
-
-
-    vec3 N = normalize(Normal);
-    vec3 V = normalize(viewPos - WorldPos);
-        vec3 R = reflect(-V, N); 
-
-    vec3 alb = pow(texture(material.texture_diffuse0, TexCoords).rgb, vec3(2.2));
-    float rgh = texture(material.texture_rgh0, TexCoords).r;
-
-    // calculate reflectance at normal incidence; if dia-electric (like plastic) use F0 
-    // of 0.04 and if it's a metal, use the albedo color as F0 (metallic workflow)    
-    vec3 F0 = vec3(0.04); 
-    F0 = mix(F0, alb, metallic);
-
-    float shadow = 0;
-
-    // reflectance equation
-    vec3 Lo = vec3(0.0);
-    for(int i = 0; i < light_count; ++i) 
-    {
-        Light light = lights[i];
-
-        vec3 lightDir = normalize(-light.direction);
-
-        // calculate per-light radiance
-        vec3 L = normalize(light.position - WorldPos);
-        
-        //L =  lightDir;
-        vec3 H = normalize(V + L);
-        float distance = length(light.position- WorldPos);
-
-        float attenuation = 1.0 / (distance * distance);
-
-        //attenuation = 1.0;
-
-        vec3 radiance = light.color * attenuation;
-
-        radiance *= light.power;
-
-        // Cook-Torrance BRDF
-        float NDF = DistributionGGX(N, H, rgh);   
-        float G   = GeometrySmith(N, V, L, rgh);      
-        vec3 F    = fresnelSchlick(clamp(dot(H, V), 0.0, 1.0), F0);
-           
-        vec3 numerator    = NDF * G * F; 
-        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001; // + 0.0001 to prevent divide by zero
-        vec3 specular = numerator / denominator;
-        
-        // kS is equal to Fresnel
-        vec3 kS = F;
-        // for energy conservation, the diffuse and specular light can't
-        // be above 1.0 (unless the surface emits light); to preserve this
-        // relationship the diffuse component (kD) should equal 1.0 - kS.
-        vec3 kD = vec3(1.0) - kS;
-        // multiply kD by the inverse metalness such that only non-metals 
-        // have diffuse lighting, or a linear blend if partly metal (pure metals
-        // have no diffuse light).
-        kD *= 1.0 - metallic;	  
-
-        // scale light by NdotL
-        float NdotL = max(dot(N, L), 0.0);   
-        
-        shadow += ShadowCalculation(light);
-
-        if (light.enabled)
-            Lo += (kD * alb / PI + specular) * radiance * NdotL;  // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
-    }   
-    
-    // ambient lighting (note that the next IBL tutorial will replace 
-    // this ambient lighting with environment lighting).
-
-    // ambient lighting (we now use IBL as the ambient term)
-    
-    //sampler2D irradianceMap = material.texture_rad0;
-    //sampler2D prefilterMap = material.texture_pref0;
-    //sampler2D brdfLUT = material.texture_brdf0;
-    
-    // ambient lighting (we now use IBL as the ambient term)
-    vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0,rgh);
-	vec3 kS = F;
-	vec3 kD = 1.0 - kS;
-	
-	kD *= 1.0 - metallic;	  
-	  
-	vec3 irradiance = texture(material.texture_rad0, N).rgb;
-	vec3 diffuse    = irradiance * alb;
-	  
-	const float MAX_REFLECTION_LOD = 4.0;
-	vec3 prefilteredColor = textureLod(material.texture_pref0, R,  rgh * MAX_REFLECTION_LOD).rgb;   
-	vec2 envBRDF  = texture(material.texture_brdf0, vec2(max(dot(N, V), 0.0), rgh)).rg;
-	vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
-
-
-    vec3 ambient = (kD * diffuse + specular) * ao * (1.0 - shadow);
-
-	//ambient = vec3(specular);
-
-    vec3 color = ambient + Lo;
-
-    //color -= (shadow*vec3(0.25));
-
-    // HDR tonemapping
-    color = color / (color + vec3(1.0));
-    // gamma correct
-    color = pow(color, vec3(1.0/2.2)); 
-    
-    //FragColor = vec4(vec3(1.0,0,0),1.0);
-
-    FragColor = vec4(vec3(color), 1.0);
+    gPosition = vec4(WorldPos,1.0);
+    gNormal = vec4(normalize(Normal),1.0);
+    gAlbedoSpec = vec4(albedo, 1.0);
+    gCombined = vec4(roughness, metallic, 1.0,1.0);
 }  

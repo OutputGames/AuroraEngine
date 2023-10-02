@@ -2,23 +2,29 @@
 
 #include "billboard.hpp"
 #include "engine/imgui_ext.hpp"
+#include "glm/detail/_noise.hpp"
+#include "glm/detail/_noise.hpp"
+#include "glm/detail/_noise.hpp"
+#include "glm/detail/_noise.hpp"
 #include "imgui/imgui.h"
 #include "rendering/camera.hpp"
 #include "stb/stb_image.h"
 
 
-CLASS_DEFINITION(Component, Light)
+CLASS_DEFINITION(Component, PointLight)
 CLASS_DEFINITION(Component, Skybox)
 
 using namespace nlohmann;
 
 Mesh* skyboxMesh;
 
-void Light::Init()
+void PointLight::Init()
 {
-	if (Scene::GetScene()->light_mgr->lights.size() < 10) {
-		id = Scene::GetScene()->light_mgr->lights.size();
-		Scene::GetScene()->light_mgr->lights.push_back(this);
+	if (Scene::GetScene()) {
+		if (Scene::GetScene()->light_mgr->lights.size() < 10) {
+			id = Scene::GetScene()->light_mgr->lights.size();
+			Scene::GetScene()->light_mgr->lights.push_back(this);
+		}
 	}
 
 	if (!entity->GetComponent<Billboard>()) {
@@ -35,7 +41,7 @@ void Light::Init()
 	}
 }
 
-void Light::Update()
+void PointLight::Update()
 {
 	enabled = entity->enabled;
 
@@ -45,12 +51,12 @@ void Light::Update()
 	}
 }
 
-void Light::Unload()
+void PointLight::Unload()
 {
 	Scene::GetScene()->light_mgr->RemoveLight(this);
 }
 
-void Light::EngineRender()
+void PointLight::EngineRender()
 {
 	float lcol[3] = {color.r, color.g, color.b};
 
@@ -61,12 +67,12 @@ void Light::EngineRender()
 	ImGui::SliderFloat("Light Power", &power, 0, 1000);
 }
 
-std::string Light::GetIcon()
+std::string PointLight::GetIcon()
 {
 	return icon;
 }
 
-std::string Light::PrintToJSON()
+std::string PointLight::PrintToJSON()
 {
 
 	json j;
@@ -82,7 +88,7 @@ std::string Light::PrintToJSON()
 	return j.dump();
 }
 
-void Light::LoadFromJSON(nlohmann::json data)
+void PointLight::LoadFromJSON(nlohmann::json data)
 {
 	for (int i = 0; i < 3; ++i)
 	{
@@ -95,7 +101,7 @@ void Light::LoadFromJSON(nlohmann::json data)
 
 Shader* simpleDepthShader = nullptr;
 
-void Light::CalcShadowMap()
+void PointLight::CalcShadowMap()
 {
 	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 
@@ -172,15 +178,18 @@ void Skybox::Init()
 {
 	if (skyboxMesh == nullptr)
 	{
-		skyboxMesh = Mesh::Load("editor/models/cube.fbx");
+		skyboxMesh = Mesh::Load("editor/models/cube.fbx", 0);
 		entity->material->LoadShader(new Shader("editor/shaders/1/"));
 	}
 
-	Scene::GetScene()->light_mgr->sky = this;
+	if (Scene::GetScene()) {
+		Scene::GetScene()->light_mgr->sky = this;
+	}
 }
 
 void Skybox::Update()
 {
+	
 	RenderData* render_data = new RenderData;
 	
 	render_data->mesh = skyboxMesh;
@@ -199,6 +208,8 @@ void Skybox::Update()
 	render_data->matrix = mat;
 
 	render_data->useDepthMask = false;
+	render_data->deferred = false;
+	
 
 	RenderMgr::renderObjs.push_back(render_data);
 	
@@ -207,7 +218,7 @@ void Skybox::Update()
 void Skybox::EngineRender()
 {
 	string filePath, filePathName;
-	bool opened = ImGui::FileDialog(&cubemap_texture.path, ".hdr", filePathName, filePath);
+	bool opened = false;
 
 	if (opened)
 	{
@@ -669,7 +680,7 @@ void LightingMgr::EditMaterial(Material* material)
 	{
 		std::string light_un = "lights[" + to_string(ctr) + "]";
 		if (i < lights.size()) {
-			Light* light = lights[i];
+			PointLight* light = lights[i];
 			material->entity->material->uniforms[(light_un + ".position")].v3 = light->entity->transform->position;
 			material->entity->material->uniforms[(light_un + ".direction")].v3 = light->entity->transform->GetEulerAngles();
 			material->entity->material->uniforms[(light_un + ".color")].v3 = light->color;
@@ -691,11 +702,11 @@ void LightingMgr::EditMaterial(Material* material)
 	}
 }
 
-void LightingMgr::RemoveLight(Light* light)
+void LightingMgr::RemoveLight(PointLight* light)
 {
 	int lid = light->id;
 
-	for (Light* value : lights)
+	for (PointLight* value : lights)
 	{
 		if (value->id > lid)
 		{
@@ -707,4 +718,215 @@ void LightingMgr::RemoveLight(Light* light)
 
 	//std::cout << "removed light at " << lid << std::endl;
 
+}
+
+unsigned LightingMgr::GetGeometryBuffer()
+{
+
+	if (gBuffer == 0)
+	{
+		glGenFramebuffers(1, &gBuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+
+		glm::vec2 screenSize = RenderMgr::GetSceneWinSize();
+
+		// position color buffer
+		glGenTextures(1, &gPosition);
+		glBindTexture(GL_TEXTURE_2D, gPosition);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+		// normal color buffer
+		glGenTextures(1, &gNormal);
+		glBindTexture(GL_TEXTURE_2D, gNormal);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+		// color + specular color buffer
+		glGenTextures(1, &gAlbedoSpec);
+		glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+
+		glGenTextures(1, &gCombined);
+		glBindTexture(GL_TEXTURE_2D, gCombined);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gCombined, 0);
+
+		// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
+		unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+		glDrawBuffers(4, attachments);
+		// create and attach depth buffer (renderbuffer)
+		unsigned int rboDepth;
+		glGenRenderbuffers(1, &rboDepth);
+		glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, screenSize.x, screenSize.y);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+		// finally check if framebuffer is complete
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			std::cout << "Framebuffer not complete!" << std::endl;
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	}
+
+	bool genBrdf = (brdfLUTTexture == 0);
+
+	//genBrdf = true;
+
+	if (genBrdf)
+	{
+
+		if (captureFBO == 0)
+		{
+			glGenFramebuffers(1, &captureFBO);
+			glGenRenderbuffers(1, &captureRBO);
+		}
+
+		//glDeleteTextures(1, &brdfLUTTexture);
+
+
+		if (brdfLUTTexture == 0) {
+			glGenTextures(1, &brdfLUTTexture);
+		}
+
+		Shader brdfShader("editor/shaders/3/");
+
+		brdfShader.reload();
+
+		// pre-allocate enough memory for the LUT texture.
+		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT, 0);
+		// be sure to set wrapping mode to GL_CLAMP_TO_EDGE
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		// then re-configure capture framebuffer object and render screen-space quad with BRDF shader.
+		glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+		glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, brdfLUTTexture, 0);
+
+		glViewport(0, 0, 512, 512);
+		brdfShader.use();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		renderQuad();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	return gBuffer;
+
+}
+
+void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer)
+{
+	static Shader* shaderLightingPass;
+
+	if (shaderLightingPass == nullptr)
+	{
+		shaderLightingPass = new Shader("editor/shaders/9/");
+	}
+
+	float time = glfwGetTime();
+
+	shaderLightingPass->reload();
+
+	glm::vec2 screenSize = RenderMgr::GetSceneWinSize();
+
+	// 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
+// -----------------------------------------------------------------------------------------------------------------------
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	shaderLightingPass->use();
+
+	shaderLightingPass->setInt("gPosition", 0);
+	shaderLightingPass->setInt("gNormal", 1);
+	shaderLightingPass->setInt("gAlbedo", 2);
+	shaderLightingPass->setInt("gCombined", 3);
+
+	shaderLightingPass->setInt("brdf", 4);
+	shaderLightingPass->setInt("irradiance", 5);
+	shaderLightingPass->setInt("prefilter", 6);
+	shaderLightingPass->setInt("cubemap", 7);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, gPosition);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, gNormal);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, gCombined);
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
+	if (sky) {
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->irradianceMap);
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->prefilterMap);
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->cubemap_texture.ID);
+	}
+
+	int ctr = 0;
+	for (int i = 0; i < 10; i++)
+	{
+		std::string light_un = "lights[" + to_string(ctr) + "]";
+		if (i < lights.size()) {
+			PointLight* light = lights[i];
+			shaderLightingPass->setVec3(light_un + ".position", light->entity->transform->position);
+			shaderLightingPass->setVec3(light_un + ".direction", light->entity->transform->GetEulerAngles());
+			shaderLightingPass->setVec3(light_un + ".color", light->color);
+			shaderLightingPass->setBool(light_un + ".enabled", light->enabled);
+			shaderLightingPass->setFloat(light_un + ".power", light->power);
+			shaderLightingPass->setMat4(light_un + ".position", light->spaceMatrix);
+
+			/*
+
+			if (!hasShadowMap && light->shadowMap != 0)
+			{
+				Texture t = { light->shadowMap, "texture_shad", false };
+				material->textures.push_back(t);
+			}
+			*/
+		}
+		else
+		{
+			shaderLightingPass->setBool(light_un + ".enabled", false);
+			//material->entity->material->uniforms[(light_un + ".enabled")].b = false;
+		}
+		ctr++;
+	}
+
+	shaderLightingPass->setVec3("viewPos",viewPos);
+	// finally render quad
+	renderQuad();
+
+	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
+	// ----------------------------------------------------------------------------------
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prebuffer); // write to default framebuffer
+	// blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
+	// the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the 		
+	// depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
+	glBlitFramebuffer(0, 0, screenSize.x, screenSize.y, 0, 0, screenSize.x, screenSize.y, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer(GL_FRAMEBUFFER, prebuffer);
+}
+
+void LightingMgr::ResizeGeometryBuffer(vec2 size)
+{
+	glDeleteFramebuffers(1, &gBuffer);
+
+	glDeleteTextures(1, &gPosition);
+	glDeleteTextures(1, &gNormal);
+	glDeleteTextures(1, &gAlbedoSpec);
+	glDeleteTextures(1, &gCombined);
+
+	gBuffer = 0;
 }

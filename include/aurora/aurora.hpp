@@ -8,4 +8,4 @@
 #include "rendering/renderer.hpp"
 #include "utils/filesystem.hpp"
 
-void InitEngine();
+AURORA_API void InitEngine();

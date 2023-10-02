@@ -4,7 +4,7 @@
 #include "entity.hpp"
 #include "utils/utils.hpp"
 
-struct Project
+struct AURORA_API Project
 {
     std::string name;
     void Save();
