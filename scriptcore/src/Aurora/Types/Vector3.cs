@@ -1,6 +1,6 @@
 namespace Aurora
 {
-    public class Vector3
+    public struct Vector3
     {
         public float X,Y,Z;
 
@@ -13,15 +13,15 @@ namespace Aurora
 
 		public Vector3(float x, float y, float z)
 		{
-			x = x;
-			y = y;
-			z = z;
+			X = x;
+			Y = y;
+			Z = z;
 		}
 
 		public Vector3(Vector2 xy, float z)
 		{
-			X = xy.x;
-			Y = xy.y;
+			X = xy.X;
+			Y = xy.Y;
 			this.Z = z;
 		}
 

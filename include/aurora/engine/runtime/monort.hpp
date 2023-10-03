@@ -1,4 +1,5 @@
 
+#include "engine/componentregistry.hpp"
 #if !defined(MONORUNTIME)
 
 #include "utils/utils.hpp"
@@ -8,6 +9,7 @@
 #include "mono/metadata/object.h"
 #include "mono/metadata/mono-debug.h"
 #include "mono/metadata/threads.h"
+#include "mono/metadata/reflection.h"
 #include "engine/entity.hpp"
 
 #define MONORUNTIME
@@ -78,6 +80,7 @@ struct MonoRuntime
 		unordered_map<string, MonoScript*> componentClasses;
 		unordered_map<uint32_t, MonoScriptInstance*> componentInstances;
 		unordered_map<uint32_t, MonoScriptInstance*> entityInstances;
+        unordered_map < MonoType*, function<bool(Entity*)>> hasComponentFuncs;
         MonoScript* entityClass;
 
 		MonoDomain* rootDomain;
@@ -89,6 +92,7 @@ struct MonoRuntime
 
     static std::string MonoStringToUTF8(MonoString* monoString);
     static MonoString* UTF8ToMonoString(string str);
+    static  MonoImage* GetCoreAssemblyImage();
 
     static runtime_variables* m_data;
 
@@ -103,24 +107,19 @@ struct InternalCalls
     static MonoClass* Entity_GetEntity(int id);
     static void Transform_GetPosition(int id, glm::vec3* outTranslation);
     static void Transform_SetPosition(int id, glm::vec3* outTranslation);
+    static void Entity_HasComponent(int id, MonoReflectionType* type);
+
+    static void Material_GetTextures(int id, vector<Texture>* textures);
+    static void Material_SetUniforms(int id, map<MonoString*, MonoObject*>* uniforms);
+    static void Material_GetUniforms(int id,MonoObject* dict);
+
     static void InitFunctions();
-};
+    template <typename... C>
+    static void RegisterComponent();
 
-class ScriptComponent : public Component
-{
-	CLASS_DECLARATION(ScriptComponent)
-
-public:
-	ScriptComponent(std::string&& initialValue) : Component(move(initialValue))
-	{
-	}
-
-	ScriptComponent() = default;
-    void EngineRender() override;
-    void Init() override;
-
-    string name;
-
+    template <typename... C>
+    static void RegisterComponent(ComponentRegistry::ComponentRegister<C...>);
+    static void InitComponents();
 };
 
 #endif // MONORUNTIME

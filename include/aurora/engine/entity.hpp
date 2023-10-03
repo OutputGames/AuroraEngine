@@ -120,6 +120,12 @@ struct AURORA_API Entity
 
     void AddComponent(std::string name);
 
+    template< class ComponentType >
+    bool HasComponent()
+    {
+        return GetComponent<ComponentType>() != nullptr;
+    }
+
     void RenderComponents();
     void Delete();
 
@@ -265,16 +271,5 @@ private:
     friend class Project;
     std::string path;
 };
-
-struct AURORA_API ComponentRegistry
-{
-    template<typename T> static std::shared_ptr<Component> createInstance() { return make_shared< T >(); }
-
-    //typedef std::map<std::string, Component* (*)()> map_type;
-    static std::map<std::string, std::shared_ptr<Component>(*)()> cmp_map;
-};
-
-template <class Comp>
-void RegisterComponent();
 
 #endif

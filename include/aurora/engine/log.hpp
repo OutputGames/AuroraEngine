@@ -13,7 +13,7 @@ struct Logger
         LOG_ERROR,
     };
 
-    static void Log(std::string msg, Logger::Level logLevel, std::string source);
+    static void Log(std::string msg, Logger::Level logLevel=INFO, std::string source="Engine");
     static std::map<std::pair<int, std::string>, Logger::Level> loggedEntries;
 };
 

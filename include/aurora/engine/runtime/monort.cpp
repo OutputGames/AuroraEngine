@@ -1,37 +1,24 @@
 #include "monort.hpp"
+#include "monort.hpp"
 
+#include "scriptcomponent.hpp"
+#include "engine/componentregistry.hpp"
 #include "engine/project.hpp"
+#include "rendering/renderer.hpp"
 #include "utils/filesystem.hpp"
 
 MonoRuntime::runtime_variables* MonoRuntime::m_data;
 
-CLASS_DEFINITION(Component, ScriptComponent)
-
-void ScriptComponent::EngineRender()
+void SetUpEntityClass(MonoRuntime::MonoScriptInstance* instance, Entity* entity)
 {
+    MonoClass* i_class = mono_object_get_class(instance->m_instance);
 
-    bool scriptExists = MonoRuntime::ClassExists(name);
+    MonoClassField* idField = mono_class_get_field_from_name(i_class, "Id");
+    MonoProperty* nameProperty = mono_class_get_property_from_name(i_class, "Name");
+    mono_field_set_value(instance->m_instance, idField, &entity->id);
 
-    const auto& componentClasses = MonoRuntime::GetEntityClasses();
-
-    if (!scriptExists)
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.2f, 0.3f, 1.0f));
-
-    if (ImGui::InputText("Class", &name))
-    {
-
-    }
-
-    if (!scriptExists)
-        ImGui::PopStyleColor();
-
-
-
-}
-
-void ScriptComponent::Init()
-{
-    name = "Aurora.MeshRenderer";
+    MonoString* mname = MonoRuntime::UTF8ToMonoString(entity->name);
+    mono_property_set_value(nameProperty, instance->m_instance, (void**)&mname, nullptr);
 }
 
 void MonoRuntime::MonoAssemblyAurora::InvokeStaticMethod(string descStr)
@@ -251,6 +238,7 @@ void MonoRuntime::Initialize()
 
     m_data->coreAssembly = OpenAssembly("C:/Users/chris/Downloads/AuroraEngine/scriptcore/bin/Debug/Aurora-ScriptCore.dll");
 
+    InternalCalls::InitComponents();
     InternalCalls::InitFunctions();
 
     m_data->entityClass = new MonoScript("Aurora", "Entity", m_data->coreAssembly);
@@ -358,12 +346,7 @@ void MonoRuntime::OnCreateComponent(Entity* entity)
         MonoScriptInstance* instance = new MonoScriptInstance(m_data->componentClasses[sc->name], entity);
         m_data->componentInstances[entity->id] = instance;
 
-        MonoClass* i_class = mono_object_get_class(instance->m_instance);
-
-
-        MonoProperty* nameProperty = mono_class_get_property_from_name(i_class, "Name");
-        MonoString* mname = MonoRuntime::UTF8ToMonoString(entity->name);
-        mono_property_set_value(nameProperty, instance->m_instance, (void**)&mname, nullptr);
+        SetUpEntityClass(instance, entity);
 
         instance->InvokeOnCreate();
     }
@@ -385,14 +368,7 @@ void MonoRuntime::OnCreateEntity(Entity* entity)
     MonoScriptInstance* instance = new MonoScriptInstance(m_data->entityClass, entity);
     m_data->entityInstances[entity->id] = instance;
 
-    MonoClass* i_class = mono_object_get_class(instance->m_instance);
-
-    MonoClassField* idField = mono_class_get_field_from_name(i_class, "Id");
-    MonoProperty* nameProperty = mono_class_get_property_from_name(i_class, "Name");
-    mono_field_set_value(instance->m_instance, idField, &entity->id);
-
-    MonoString* mname = MonoRuntime::UTF8ToMonoString(entity->name);
-    mono_property_set_value(nameProperty, instance->m_instance, (void**)&mname, nullptr);
+    SetUpEntityClass(instance, entity);
 
     instance->InvokeOnCreate();
 }
@@ -446,29 +422,34 @@ MonoString* MonoRuntime::UTF8ToMonoString(string str)
     return mono_string_new(m_data->appDomain, str.c_str());
 }
 
+MonoImage* MonoRuntime::GetCoreAssemblyImage()
+{
+    MonoImage* image = mono_assembly_get_image(m_data->coreAssembly->assembly);
+    return image;
+}
+
 MonoClass* InternalCalls::Entity_CreateEntity(MonoString* name)
 {
     MonoRuntime::MonoScript* script = new MonoRuntime::MonoScript("Aurora", "Entity", MonoRuntime::m_data->coreAssembly);
 
-    MonoObject* klass = script->Instantiate();
-    MonoClass* i_class = mono_object_get_class(klass);
-
     if (Scene::GetScene())
     {
+
         Entity* entity = Scene::GetScene()->entity_mgr->CreateEntity(MonoRuntime::MonoStringToUTF8(name));
-        MonoClassField* idField = mono_class_get_field_from_name(i_class, "Id");
-        MonoProperty* nameProperty = mono_class_get_property_from_name(i_class, "Name");
-        mono_field_set_value(klass, idField, &entity->id);
 
-        MonoString* mname = MonoRuntime::UTF8ToMonoString(entity->name);
-        mono_property_set_value(nameProperty, klass, (void**)&mname, nullptr);
+        MonoRuntime::MonoScriptInstance* instance = new MonoRuntime::MonoScriptInstance(script, entity);
 
-        //script->InvokeMethod(klass, script->GetMethod("Init", 0));
+        MonoObject* klass = instance->m_instance;
+        MonoClass* i_class = mono_object_get_class(klass);
 
-        
+        SetUpEntityClass(instance, entity);
+
+            //script->InvokeMethod(klass, script->GetMethod("Init", 0));
+
+        return i_class;
     }
 
-    return i_class;
+    return nullptr;
 }
 
 MonoClass* InternalCalls::Entity_GetEntity(int id)
@@ -495,11 +476,136 @@ void InternalCalls::Transform_SetPosition(int id, glm::vec3* outTranslation)
     entity->transform->position = *outTranslation;
 }
 
+void InternalCalls::Entity_HasComponent(int id, MonoReflectionType* type)
+{
+    MonoType* managedType = mono_reflection_type_get_type(type);
+
+    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    assert(MonoRuntime::m_data->hasComponentFuncs.find(managedType) != MonoRuntime::m_data->hasComponentFuncs.end());
+    MonoRuntime::m_data->hasComponentFuncs.at(managedType)(entity);
+
+}
+
+void InternalCalls::Material_GetTextures(int id, vector<Texture>* textures)
+{
+    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+
+    *textures = entity->material->textures;
+}
+
+void InternalCalls::Material_SetUniforms(int id, map<MonoString*, MonoObject*>* uniforms)
+{
+    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+
+	for (pair<_MonoString* const, _MonoObject*> uniform : *uniforms)
+	{
+        string uniformName = MonoRuntime::MonoStringToUTF8(uniform.first);
+
+		if (entity->material->uniforms.find(uniformName) == entity->material->uniforms.end())
+            continue;
+
+        MonoClass* klass = mono_object_get_class(uniform.second);
+
+        string klassName = mono_class_get_name(klass);
+
+        Logger::Log(uniformName+": "+klassName);
+	}
+}
+
+void InternalCalls::Material_GetUniforms(int id, MonoObject* dict)
+{
+    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+
+    MonoClass* klass = mono_object_get_class(dict);
+
+    cout << mono_class_get_name(klass);
+
+	MonoMethod * method = mono_class_get_method_from_name(klass, "Add", 2);
+
+    for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
+    {
+        MonoString* uniformName = MonoRuntime::UTF8ToMonoString(uniform.first);
+
+        void* params[2];
+
+        params[0] = uniformName;
+
+        switch (uniform.second.type)
+        {
+        case GL_BOOL:
+            params[1] = &uniform.second.b;
+            break;
+        case GL_INT:
+            params[1] = &uniform.second.i;
+            break;
+        case GL_FLOAT:
+            params[1] = &uniform.second.f;
+            break;
+        case GL_FLOAT_VEC2:
+            params[1] = &uniform.second.v2;
+            break;
+        case GL_FLOAT_VEC3:
+            params[1] = &uniform.second.v3;
+            break;
+        case GL_FLOAT_VEC4:
+            params[1] = &uniform.second.v4;
+            break;
+        }
+        
+        MonoObject* obj = mono_runtime_invoke(method, dict, params, nullptr);
+    }
+}
+
 void InternalCalls::InitFunctions()
 {
 	MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::CreateEntity", &Entity_CreateEntity);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::GetEntity", &Entity_GetEntity);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TransformGetPosition", &Transform_GetPosition);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TransformSetPosition", &Transform_SetPosition);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::EntityHasComponent", &Entity_HasComponent);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialGetTextures", &Material_GetTextures);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialSetUniforms", &Material_SetUniforms);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialGetUniforms", &Material_GetUniforms);
 
+}
+
+template <typename... C>
+void InternalCalls::RegisterComponent()
+{
+    ([]() 
+    {
+        std::string rawname = typeid(C).name();
+
+        std::string sub = "class ";
+
+        std::string::size_type i = rawname.find(sub);
+
+        if (i != std::string::npos)
+            rawname.erase(i, sub.length());
+
+        string managedName = "Aurora." + rawname;
+
+        MonoType* managedType = mono_reflection_type_from_name(managedName.data(), MonoRuntime::GetCoreAssemblyImage());
+        if (!managedType)
+        {
+            Logger::Log("COULDN'T FIND COMPONENT TYPE " + managedName, Logger::LOG_ERROR);
+
+            return;
+        } else
+        {
+            Logger::Log("Registered managed component: " + managedName);
+        }
+        MonoRuntime::m_data->hasComponentFuncs[managedType] = [](Entity* entity) {return entity->HasComponent<C>(); };
+    }(), ...);
+}
+
+template <typename ... C>
+void InternalCalls::RegisterComponent(ComponentRegistry::ComponentRegister<C...>)
+{
+    RegisterComponent<C ...>();
+}
+
+void InternalCalls::InitComponents()
+{
+    RegisterComponent(ComponentRegistry::RegisteredComponents());
 }

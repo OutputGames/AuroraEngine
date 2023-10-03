@@ -1,19 +1,19 @@
 namespace Aurora
 {
-    public class Vector2
+    public struct Vector2
     {
-        public float x,y;
+        public float X,Y;
 
 		public Vector2(float scalar)
 		{
-			x = scalar;
-			y = scalar;
+			X = scalar;
+			Y = scalar;
 		}
 
 		public Vector2(float x, float y)
 		{
-			this.x = x;
-			this.y = y;
+			this.X = x;
+			this.Y = y;
 		}
 
     }

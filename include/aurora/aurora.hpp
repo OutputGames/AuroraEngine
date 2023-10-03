@@ -1,5 +1,6 @@
 #include "rendering/render.hpp"
 
+#include "engine/componentregistry.hpp"
 #include "engine/entity.hpp"
 #include "engine/log.hpp"
 #include "engine/project.hpp"

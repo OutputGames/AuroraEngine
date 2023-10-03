@@ -12,11 +12,14 @@ namespace Aurora
 
         public Transform Transform { get; set; }
 
+        public Material Material;
+
          
         internal Entity(uint id)
         {
             Id = id;
             Transform = new Transform(this);
+            Material = new Material(this);
             Console.WriteLine("Created entity with id: "+Id);
 
         }
@@ -31,6 +34,21 @@ namespace Aurora
         public void OnUpdate(float dt)
         {
 
+        }
+
+        public bool HasComponent<T>() where T : Component, new() {
+            Type compType = typeof(T);
+
+            return InternalCalls.EntityHasComponent(Id, compType);
+        }
+
+
+        public T GetComponent<T>() where T : Component, new() {
+            if (!HasComponent<T>())
+                return null;
+
+            T component = new T() {Entity = this };
+            return component;
         }
 
         public static Entity Create()

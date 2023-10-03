@@ -35,7 +35,7 @@
                 else
                 {
                     //Console.WriteLine("Entity is null");
-                    Position = value;
+                    //Position = value;
                 }
             }
         }
