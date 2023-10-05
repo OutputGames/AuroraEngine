@@ -108,10 +108,11 @@ struct InternalCalls
     static void Transform_GetPosition(int id, glm::vec3* outTranslation);
     static void Transform_SetPosition(int id, glm::vec3* outTranslation);
     static void Entity_HasComponent(int id, MonoReflectionType* type);
-
     static void Material_GetTextures(int id, vector<Texture>* textures);
-    static void Material_SetUniforms(int id, map<MonoString*, MonoObject*>* uniforms);
-    static void Material_GetUniforms(int id,MonoObject* dict);
+    static MonoString* Material_GetValue(int id, MonoString* type, MonoString* name);
+    static void Material_SetValue(int id, MonoString* type, MonoString* name, MonoString* data);
+    static float Time_GetTime();
+    static float Time_GetSineTime();
 
     static void InitFunctions();
     template <typename... C>

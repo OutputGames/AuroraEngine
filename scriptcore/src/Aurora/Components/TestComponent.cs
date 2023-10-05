@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime;
 
 namespace Aurora {
     class TestComponent : Entity
@@ -9,14 +10,7 @@ namespace Aurora {
         {
             bool hasComp = HasComponent<MeshRenderer>();
 
-            Console.WriteLine("Entity has MeshRenderer = "+hasComp);
-
-            var dictionary = new Dictionary<string, object>();
-            InternalCalls.MaterialGetUniforms(Id, out dictionary);
-
-            Console.WriteLine(Material.Uniforms["albedo"]);
-
-            Material.Uniforms["albedo"] = new Vector3(1, 0, 0);
+            //Console.WriteLine(Material.GetValue("albedo", ValueType.Vec3));
         }
 
         public void OnUpdate(float dt)
@@ -25,6 +19,7 @@ namespace Aurora {
             //Console.WriteLine("entity name: "+Name+", id: "+Id);
 
             Transform.Position += new Vector3(0.01f,0,0);
+            Material.SetValue("albedo", ValueType.Vec3, new Vector3(InternalCalls.TimeGetSineTime(), 0, 0.5f));
         }
     }
 }

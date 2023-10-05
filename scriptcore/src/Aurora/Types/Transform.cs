@@ -21,7 +21,7 @@
                 else
                 {
                     Console.WriteLine("Entity is null");
-                    return new Vector3(0.0f);
+                    return Position;
                 }
             }
             set
@@ -43,7 +43,7 @@
         public Transform(Entity entity)
         {
             Entity = entity;
-            Position = new Vector3(0.0f);
+            //Position = new Vector3(0.0f);
         }
     }
 }

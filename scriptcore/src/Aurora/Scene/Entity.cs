@@ -20,8 +20,7 @@ namespace Aurora
             Id = id;
             Transform = new Transform(this);
             Material = new Material(this);
-            Console.WriteLine("Created entity with id: "+Id);
-
+            //Console.WriteLine("Created entity with id: "+Id);
         }
 
         protected Entity()

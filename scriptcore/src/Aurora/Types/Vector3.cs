@@ -1,3 +1,5 @@
+using System;
+
 namespace Aurora
 {
     public struct Vector3
@@ -39,6 +41,19 @@ namespace Aurora
         public static Vector3 operator *(Vector3 vector, float scalar)
         {
             return new Vector3(vector.X * scalar, vector.Y * scalar, vector.Z * scalar);
+        }
+
+        public override string ToString()
+        {
+            return X + "," + Y + "," + Z;
+        }
+
+        public static Vector3 Parse(string s)
+        {
+
+            string[] ps = s.Split(',');
+
+            return new Vector3(float.Parse(ps[0]), float.Parse(ps[1]), float.Parse(ps[2]));
         }
 
     }

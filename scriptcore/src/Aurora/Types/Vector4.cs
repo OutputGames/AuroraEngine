@@ -28,5 +28,16 @@ namespace Aurora
             W = zw.Y;
         }
 
+        public override string ToString()
+        {
+            return X + "," + Y + "," + Z + "," + W;
+        }
+
+        public static Vector4 Parse(string s)
+        {
+            string[] ps = s.Split(',');
+            return new Vector4(float.Parse(ps[0]), float.Parse(ps[1]), float.Parse(ps[2]), float.Parse(ps[3]));
+        }
+
     }
 }

@@ -44,6 +44,7 @@ project "AuroraRuntime"
         ".\\lib\\assimp\\x64\\"
     }
 
+    dependson {"Aurora-ScriptCore"}
 
    filter "configurations:Debug"
         defines { "DEBUG" }

@@ -491,69 +491,152 @@ void InternalCalls::Material_GetTextures(int id, vector<Texture>* textures)
     Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
 
     *textures = entity->material->textures;
+
 }
 
-void InternalCalls::Material_SetUniforms(int id, map<MonoString*, MonoObject*>* uniforms)
+MonoString* InternalCalls::Material_GetValue(int id, MonoString* type, MonoString* name)
 {
+    string stype = MonoRuntime::MonoStringToUTF8(type);
+    string sname = MonoRuntime::MonoStringToUTF8(name);
+
+    //Logger::Log("trying to get value: " + sname + " with type: " + stype);
+
     Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
 
-	for (pair<_MonoString* const, _MonoObject*> uniform : *uniforms)
-	{
-        string uniformName = MonoRuntime::MonoStringToUTF8(uniform.first);
+    Material::UniformData* data = entity->material->GetUniform(sname);
 
-		if (entity->material->uniforms.find(uniformName) == entity->material->uniforms.end())
-            continue;
-
-        MonoClass* klass = mono_object_get_class(uniform.second);
-
-        string klassName = mono_class_get_name(klass);
-
-        Logger::Log(uniformName+": "+klassName);
-	}
-}
-
-void InternalCalls::Material_GetUniforms(int id, MonoObject* dict)
-{
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
-
-    MonoClass* klass = mono_object_get_class(dict);
-
-    cout << mono_class_get_name(klass);
-
-	MonoMethod * method = mono_class_get_method_from_name(klass, "Add", 2);
-
-    for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
+    if (data == nullptr)
     {
-        MonoString* uniformName = MonoRuntime::UTF8ToMonoString(uniform.first);
-
-        void* params[2];
-
-        params[0] = uniformName;
-
-        switch (uniform.second.type)
-        {
-        case GL_BOOL:
-            params[1] = &uniform.second.b;
-            break;
-        case GL_INT:
-            params[1] = &uniform.second.i;
-            break;
-        case GL_FLOAT:
-            params[1] = &uniform.second.f;
-            break;
-        case GL_FLOAT_VEC2:
-            params[1] = &uniform.second.v2;
-            break;
-        case GL_FLOAT_VEC3:
-            params[1] = &uniform.second.v3;
-            break;
-        case GL_FLOAT_VEC4:
-            params[1] = &uniform.second.v4;
-            break;
-        }
-        
-        MonoObject* obj = mono_runtime_invoke(method, dict, params, nullptr);
+        return MonoRuntime::UTF8ToMonoString("null");
     }
+
+    MonoString* s = nullptr;
+
+    if (stype == "Bool")
+    {
+	    s = MonoRuntime::UTF8ToMonoString(to_string(data->b));
+    }
+
+    if (stype == "Float")
+    {
+        s = MonoRuntime::UTF8ToMonoString(to_string(data->f));
+    }
+
+    if (stype == "Int")
+    {
+        s = MonoRuntime::UTF8ToMonoString(to_string(data->i));
+    }
+
+    if (stype == "Vec2")
+    {
+        s = MonoRuntime::UTF8ToMonoString(to_string(data->v2.x)+","+ to_string(data->v2.y));
+    }
+
+    if (stype == "Vec3")
+    {
+        s = MonoRuntime::UTF8ToMonoString(to_string(data->v3.x) + "," + to_string(data->v3.y)+","+ to_string(data->v3.z));
+    }
+
+    if (stype == "Vec4")
+    {
+        s = MonoRuntime::UTF8ToMonoString(to_string(data->v4.x) + "," + to_string(data->v4.y)+","+ to_string(data->v4.z) +","+ to_string(data->v4.w));
+    }
+
+    return s;
+}
+
+void InternalCalls::Material_SetValue(int id, MonoString* type, MonoString* name, MonoString* data)
+{
+    string stype = MonoRuntime::MonoStringToUTF8(type);
+    string sname = MonoRuntime::MonoStringToUTF8(name);
+    string sval = MonoRuntime::MonoStringToUTF8(data);
+
+    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+
+    if (entity->material->GetUniform(sname))
+    {
+        Material::UniformData uniform = entity->material->uniforms[sname];
+
+        if (stype == "Bool")
+        {
+            bool b;
+            istringstream(sval) >> b;
+            uniform.b = b;
+        }
+
+        if (stype == "Float")
+        {
+            uniform.f = stof(sval);
+        }
+
+        if (stype == "Int")
+        {
+            uniform.i = atoi(sval.c_str());
+        }
+
+        if (stype == "Vec2")
+        {
+            // Pointer to point the word returned by the strtok() function.
+            char* p;
+            // Here, the delimiter is white space.
+            p = strtok(sval.data(), ",");
+            int ctr = 0;
+            vec2 v = {};
+            while (p != NULL) {
+                //cout << p << endl;
+                v[ctr] = stof(string(p));
+                p = strtok(NULL, ",");
+                ctr++;
+            }
+            uniform.v2 = v;
+        }
+
+        if (stype == "Vec3")
+        {
+            // Pointer to point the word returned by the strtok() function.
+            char* p;
+            // Here, the delimiter is white space.
+            p = strtok(sval.data(), ",");
+            int ctr = 0;
+            vec3 v = {};
+            while (p != NULL) {
+                //cout << p << endl;
+                v[ctr] = stof(string(p));
+                p = strtok(NULL, ",");
+                ctr++;
+            }
+            uniform.v3 = v;
+        }
+
+        if (stype == "Vec4")
+        {
+            // Pointer to point the word returned by the strtok() function.
+            char* p;
+            // Here, the delimiter is white space.
+            p = strtok(sval.data(), ",");
+            int ctr = 0;
+            vec4 v = {};
+            while (p != NULL) {
+                //cout << p << endl;
+                v[ctr] = stof(string(p));
+                p = strtok(NULL, ",");
+                ctr++;
+            }
+            uniform.v4 = v;
+        }
+
+        entity->material->uniforms[sname] = uniform;
+    }
+}
+
+float InternalCalls::Time_GetTime()
+{
+    return glfwGetTime();
+}
+
+float InternalCalls::Time_GetSineTime()
+{
+    return sinf(glfwGetTime());
 }
 
 void InternalCalls::InitFunctions()
@@ -564,9 +647,10 @@ void InternalCalls::InitFunctions()
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TransformSetPosition", &Transform_SetPosition);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::EntityHasComponent", &Entity_HasComponent);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialGetTextures", &Material_GetTextures);
-    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialSetUniforms", &Material_SetUniforms);
-    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialGetUniforms", &Material_GetUniforms);
-
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialGetValue", &Material_GetValue);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::MaterialSetValue", &Material_SetValue);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TimeGetTime", &Time_GetTime);
+    MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TimeGetSineTime", &Time_GetSineTime);
 }
 
 template <typename... C>

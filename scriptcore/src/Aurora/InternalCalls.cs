@@ -20,18 +20,22 @@ namespace Aurora {
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public static extern void TransformGetPosition(uint id,  out Vector3 position);
 
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        public static extern string MaterialGetValue(uint id, string type, string name);
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        public static extern void MaterialSetValue(uint id, string type, string name, string data);
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public static extern void MaterialGetTextures(uint id, out List<Texture> textures);
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
-        public static extern void MaterialSetUniforms(uint id, ref Dictionary<string, object> uniforms);
-
-
-        [MethodImplAttribute(MethodImplOptions.InternalCall)]
-        public static extern void MaterialGetUniforms(uint id, out Dictionary<string, object> uniforms);
-
-        [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public static extern void TransformSetPosition(uint id, ref Vector3 position);
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        public static extern float TimeGetTime();
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        public static extern float TimeGetSineTime();
     }
 }

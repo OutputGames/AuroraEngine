@@ -526,7 +526,7 @@ void Scene::OnRuntimeUpdate()
 
     for (Entity* entity : entity_mgr->entities)
     {
-        MonoRuntime::OnUpdateEntity(entity, dt);
+        //MonoRuntime::OnUpdateEntity(entity, dt);
     }
 
 }
