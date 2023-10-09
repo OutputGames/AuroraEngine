@@ -6,6 +6,8 @@ namespace Aurora {
     class TestComponent : Entity
     {
 
+        public float speed;
+
         public void OnInit()
         {
             bool hasComp = HasComponent<MeshRenderer>();
@@ -18,8 +20,7 @@ namespace Aurora {
             //Console.WriteLine(dt);
             //Console.WriteLine("entity name: "+Name+", id: "+Id);
 
-            Transform.Position += new Vector3(0.01f,0,0);
-            Material.SetValue("albedo", ValueType.Vec3, new Vector3(InternalCalls.TimeGetSineTime(), 0, 0.5f));
+            Transform.Position += new Vector3(speed,0,0);
         }
     }
 }

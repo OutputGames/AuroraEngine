@@ -1,6 +1,7 @@
 #include "project.hpp"
 
 #include "json.hpp"
+#include "assets/processor.hpp"
 #include "dirent/dirent.h"
 #include "utils/filesystem.hpp"
 
@@ -39,7 +40,7 @@ void Project::Save()
 
 Project* Project::Load(std::string path)
 {
-	Project* p = new Project;
+	Project* p = new Project(path);
 	Shader::loadedShaders.clear();
 
 	std::filesystem::path projPath = std::filesystem::path(path);
@@ -65,6 +66,8 @@ Project* Project::Load(std::string path)
 
 	p->LoadScene(j["loadedScene"]);
 
+	p->Init();
+
 	return p;
 }
 
@@ -78,16 +81,11 @@ Project* Project::Create(std::string path, std::string name)
 		//return nullptr;
 	}
 
-	Project* proj = new Project;
-
-	proj->save_path = path;
-
 	std::filesystem::path projPath = std::filesystem::path(path);
 
+	std::filesystem::create_directory(projPath.string() + "/resources/");
 
-	Filesystem::CopyRecursive("resources/", path + "/editor/");
-
-	std::filesystem::current_path(projPath);
+	Project* proj = new Project(path);
 
 	if (name == "")
 	{
@@ -116,8 +114,6 @@ Project* Project::Create(std::string path, std::string name)
 
 	projFile.close();
 
-	std::filesystem::create_directory(projPath.string() + "/resources/");
-
 	proj->name = name;
 
 	proj->scenes.push_back(Scene::CreateScene("Main"));
@@ -126,7 +122,15 @@ Project* Project::Create(std::string path, std::string name)
 
 	current_project = proj;
 
+	proj->Init();
+
 	return proj;
+}
+
+void Project::Init()
+{
+	processor = new AssetProcessor;
+	processor->Init(save_path + "/resources/");
 }
 
 Project* Project::GetProject()
@@ -175,4 +179,15 @@ void Project::LoadScenePath(std::string p)
 bool Project::ProjectLoaded()
 {
 	return current_project != nullptr;
+}
+
+Project::Project(string path)
+{
+
+	Filesystem::CopyRecursive("resources/", path + "/editor/");
+
+	std::filesystem::current_path(path);
+
+	loaded_scene = nullptr;
+	save_path = path;
 }

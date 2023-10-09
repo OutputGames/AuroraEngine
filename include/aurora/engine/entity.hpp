@@ -11,6 +11,8 @@
 
 #define TO_STRING( x ) #x
 
+struct Prefab;
+struct SaveState;
 struct AURORA_API PhysicsFactory;
 struct AURORA_API LightingMgr;
 class Component;
@@ -78,8 +80,12 @@ struct AURORA_API Transform {
     Transform* parent=nullptr;
 
 
-    std::vector<Transform*> children;
+    std::vector<shared_ptr<Transform>> children;
 
+private:
+    friend Entity;
+
+    int index;
 };
 
 struct AURORA_API Entity
@@ -142,6 +148,20 @@ struct AURORA_API Entity
 
     void SetShader(Shader* shader);
 
+    Prefab* Export();
+
+    static Entity* Load(string data);
+    void LoadData(string data);
+
+    Entity()
+    {
+        enabled = true;
+        transform = new Transform();
+        transform->entity = this;
+        material = new Material;
+        material->entity = this;
+    };
+
 private:
     friend class Scene;
     friend Transform;
@@ -149,13 +169,6 @@ private:
     bool treeopen=false;
 
     void Update();
-
-    Entity()
-    {
-        enabled = true;
-        transform = new Transform();
-        material = new Material;
-    };
 };
 
 template <class CompType, typename ... Args>
@@ -239,11 +252,16 @@ struct AURORA_API Scene
     	Entity* CreateEntity(std::string name);
     	void RemoveEntity(Entity* entity);
     	Entity* DuplicateEntity(Entity* entity);
+        void InsertEntity(Entity* entity);
+
+        void InsertPrefab(Prefab* prefab);
 
         template <class T>
         vector<Entity*> GetEntitiesWithComponent();
 
-        vector<Entity*> entities;
+
+
+        vector<shared_ptr<Entity>> entities;
     };
 
     EntityMgr* entity_mgr;
@@ -257,10 +275,14 @@ struct AURORA_API Scene
     void OnStart();
     void OnUpdate();
     void OnUnload();
+    string ToString();
+    void LoadScene(string s);
     std::string SaveScene();
     static Scene* GetScene();
     static Scene* LoadScene(std::string s, bool isNew);
     static Scene* CreateScene(std::string s);
+
+    Scene();
 
     void SetPath(std::string p);
 
@@ -270,6 +292,7 @@ struct AURORA_API Scene
 private:
     friend class Project;
     std::string path;
+    SaveState* saveState = nullptr;;
 };
 
 #endif

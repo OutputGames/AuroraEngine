@@ -10,11 +10,11 @@ public:
     std::string shaderDirectory, name;
     bool useGeometry;
 
-    static map<string, Shader*> loadedShaders;
+    static unordered_map<string, Shader*> loadedShaders;
 
     // constructor generates the shader on the fly
     // ------------------------------------------------------------------------
-    Shader(std::string shaderDirectory, bool useGeometry = false)
+    Shader(std::string shaderDirectory, bool useGeometry = false, bool logShader=true)
     {
 
         string shaderDir = filesystem::path(shaderDirectory).string();
@@ -23,13 +23,19 @@ public:
             this->shaderDirectory = shaderDir;
             this->useGeometry = useGeometry;
             this->reload();
-            loadedShaders.insert({ shaderDir, this });
+            if (logShader) {
+                loadedShaders.insert({ shaderDir, this });
+            }
 
             name = shaderDir;
 
         } else
         {
             Shader* preloadedShader = loadedShaders[shaderDir];
+
+            //cout << preloadedShader->ID;
+
+            //Logger::Log("got preloaded shader: " + preloadedShader->name + " with id: " + to_string(preloadedShader->ID));
 
             this->ID = preloadedShader->ID;
             this->shaderDirectory = preloadedShader->shaderDirectory;
@@ -51,6 +57,15 @@ public:
 
             return preloadedShader;
         }
+    }
+
+    static void UnloadAllShaders()
+    {
+	    for (auto loaded_shader : loadedShaders)
+	    {
+            glDeleteProgram(loaded_shader.second->ID);
+	    }
+        loadedShaders.clear();
     }
 
     void loadSource(std::string vertexCode, std::string fragmentCode, std::string geometryCode)
@@ -99,8 +114,20 @@ public:
             glDeleteShader(geometry);
     }
 
+    static void ReloadAllShaders()
+    {
+	    for (pair<const string, Shader*> loaded_shader : loadedShaders)
+	    {
+		    if (loaded_shader.second)
+		    {
+                loaded_shader.second->reload();
+		    }
+	    }
+    }
+
     void reload()
     {
+        cout << "Loading shader: " + shaderDirectory << endl;
         // 1. retrieve the vertex/fragment source code from filePath
         std::string vertexCode;
         std::string fragmentCode;

@@ -1,4 +1,6 @@
 .vs/
+.idea/
+.vscode/
 bin/
 generated/
 enc_temp_folder/

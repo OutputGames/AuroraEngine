@@ -4,12 +4,16 @@
 #include "entity.hpp"
 #include "utils/utils.hpp"
 
+struct AssetProcessor;
+
 struct AURORA_API Project
 {
     std::string name;
     void Save();
     static Project* Load(std::string path);
     static Project* Create(std::string path, std::string name="");
+
+    void Init();
 
     static Project* GetProject();
 
@@ -18,8 +22,12 @@ struct AURORA_API Project
 
     static bool ProjectLoaded();
 
+    AssetProcessor* processor;
+
 private:
     friend Scene;
+
+    Project(string path);
 
     std::string save_path;
 

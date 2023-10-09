@@ -97,13 +97,42 @@ void MonoRuntime::MonoAssemblyAurora::PrintTypes()
 
         bool isComponent = mono_class_is_subclass_of(mono_class, comp_class, false);
 
+        MonoScript* script = new MonoScript(nameSpace, name, this);
+
         if (isComponent && fullName != "Aurora.Entity")
         {
-            MonoRuntime::m_data->componentClasses[fullName] = new MonoScript(nameSpace, name, this);
+            MonoRuntime::m_data->componentClasses[fullName] = script;
+
+            int fieldCount = mono_class_num_fields(mono_class);
+
+            Logger::Log(string(nameSpace) + "." + string(name) + " has " + to_string(fieldCount) + " fields:");
+
+            void* itr = nullptr;
+
+            while (MonoClassField* field = mono_class_get_fields(mono_class, &itr))
+            {
+                string fieldName = mono_field_get_name(field);
+                uint32_t flags = mono_field_get_flags(field);
+
+                if (flags & MONO_FIELD_ATTR_PUBLIC) {
+
+                    MonoType* type = mono_field_get_type(field);
+
+
+                    ScriptFieldType fieldType = MonoTypeToScriptFieldType(type);
+
+                    script->fields[fieldName] = { fieldType, fieldName, field };
+
+                    Logger::Log("   " + fieldName+" ("+FieldTypeToString(fieldType)+")");
+                }
+            }
         }
 
         printf("%s.%s\n", nameSpace, name);
+
     }
+
+
 }
 
 void MonoRuntime::MonoAssemblyAurora::AddInternalCall(string method, const void* func)
@@ -215,6 +244,37 @@ void MonoRuntime::MonoScriptInstance::InvokeOnUpdate(float dt)
     m_script->InvokeMethod(m_instance, m_updateMethod, &payload);
 }
 
+MonoRuntime::MonoScript* MonoRuntime::MonoScriptInstance::GetClass()
+{
+    return m_script;
+}
+
+bool MonoRuntime::MonoScriptInstance::GetFieldValueInternal(const string name, void* buffer)
+{
+    const auto& fields = m_script->GetFields();
+    auto it = fields.find(name);
+    if (it == fields.end())
+        return false;
+
+    const ScriptField& field = it->second;
+
+    mono_field_get_value(m_instance, field.class_field, buffer);
+
+    return true;
+}
+
+void MonoRuntime::MonoScriptInstance::SetFieldValueInternal(const string name, const void* value)
+{
+    const auto& fields = m_script->GetFields();
+    auto it = fields.find(name);
+    if (it == fields.end())
+        return;
+
+    const ScriptField& field = it->second;
+
+    mono_field_set_value(m_instance, field.class_field, (void*)value);
+}
+
 void MonoRuntime::Initialize()
 {
     //#pragma region Init mono runtime
@@ -316,9 +376,9 @@ void MonoRuntime::OnRuntimeStart(Scene* scene)
 {
     m_data->entityInstances.clear();
 
-    for (Entity* entity : scene->entity_mgr->entities)
+    for (auto const& entity : scene->entity_mgr->entities)
     {
-        OnCreateEntity(entity);
+        OnCreateEntity(entity.get());
     }
 }
 
@@ -335,6 +395,15 @@ void MonoRuntime::CompileProject(string path, string outPath)
 bool MonoRuntime::ClassExists(string className)
 {
     return m_data->componentClasses.find(className) != m_data->componentClasses.end();
+}
+
+MonoRuntime::MonoScriptInstance* MonoRuntime::GetEntityScriptInstance(uint32_t entityId)
+{
+    auto it = m_data->componentInstances.find(entityId);
+    if (it == m_data->componentInstances.end())
+        return nullptr;
+
+    return it->second;
 }
 
 void MonoRuntime::OnCreateComponent(Entity* entity)
@@ -403,6 +472,32 @@ unordered_map<string, MonoRuntime::MonoScript*> MonoRuntime::GetEntityClasses()
     return m_data->componentClasses;
 }
 
+MonoRuntime::ScriptFieldType MonoRuntime::MonoTypeToScriptFieldType(MonoType* type)
+{
+	string typeName = mono_type_get_name(type);
+
+	return m_data->scriptFieldTypeMap.at(typeName);
+}
+
+string MonoRuntime::FieldTypeToString(ScriptFieldType type)
+{
+	switch (type)
+	{
+    case ScriptFieldType::Float: return "Float";
+    case ScriptFieldType::Bool: return "Bool";
+    case ScriptFieldType::Byte: return "Byte";
+    case ScriptFieldType::Double: return "Double";
+    case ScriptFieldType::Int: return "Int";
+    case ScriptFieldType::None: return "Null";
+    case ScriptFieldType::Short: return "Short";
+    case ScriptFieldType::UInt: return "UInt";
+    case ScriptFieldType::Vector2: return "Vector2";
+    case ScriptFieldType::Vector3: return "Vector3";
+    case ScriptFieldType::Vector4: return "Vector4";
+	}
+    return "Null";
+}
+
 std::string MonoRuntime::MonoStringToUTF8(MonoString* monoString)
 {
 	if (monoString == nullptr || mono_string_length(monoString) == 0)
@@ -464,14 +559,14 @@ MonoClass* InternalCalls::Entity_GetEntity(int id)
 
 void InternalCalls::Transform_GetPosition(int id, glm::vec3* outTranslation)
 {
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
 
     *outTranslation = entity->transform->position;
 }
 
 void InternalCalls::Transform_SetPosition(int id, glm::vec3* outTranslation)
 {
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
 
     entity->transform->position = *outTranslation;
 }
@@ -480,15 +575,15 @@ void InternalCalls::Entity_HasComponent(int id, MonoReflectionType* type)
 {
     MonoType* managedType = mono_reflection_type_get_type(type);
 
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
     assert(MonoRuntime::m_data->hasComponentFuncs.find(managedType) != MonoRuntime::m_data->hasComponentFuncs.end());
-    MonoRuntime::m_data->hasComponentFuncs.at(managedType)(entity);
+    MonoRuntime::m_data->hasComponentFuncs.at(managedType)(entity.get());
 
 }
 
 void InternalCalls::Material_GetTextures(int id, vector<Texture>* textures)
 {
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
 
     *textures = entity->material->textures;
 
@@ -501,7 +596,7 @@ MonoString* InternalCalls::Material_GetValue(int id, MonoString* type, MonoStrin
 
     //Logger::Log("trying to get value: " + sname + " with type: " + stype);
 
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
 
     Material::UniformData* data = entity->material->GetUniform(sname);
 
@@ -551,7 +646,7 @@ void InternalCalls::Material_SetValue(int id, MonoString* type, MonoString* name
     string sname = MonoRuntime::MonoStringToUTF8(name);
     string sval = MonoRuntime::MonoStringToUTF8(data);
 
-    Entity* entity = Scene::GetScene()->entity_mgr->entities[id];
+    auto const& entity = Scene::GetScene()->entity_mgr->entities[id];
 
     if (entity->material->GetUniform(sname))
     {
@@ -652,6 +747,7 @@ void InternalCalls::InitFunctions()
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TimeGetTime", &Time_GetTime);
     MonoRuntime::m_data->coreAssembly->AddInternalCall("Aurora.InternalCalls::TimeGetSineTime", &Time_GetSineTime);
 }
+
 
 template <typename... C>
 void InternalCalls::RegisterComponent()

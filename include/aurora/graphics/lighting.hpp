@@ -78,8 +78,9 @@ struct LightingMgr {
 	void EditMaterial(Material* material);
 	void RemoveLight(PointLight* light);
     unsigned int GetGeometryBuffer();
-    void UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer);
+    void UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 v = mat4(0.0), vec3 vp = vec3(0.0), mat4 p=mat4(0.0));
     void ResizeGeometryBuffer(vec2 size);
+    void Unload();
 private:
     unsigned int gBuffer=0;
     unsigned int gPosition, gNormal, gAlbedoSpec, gCombined;

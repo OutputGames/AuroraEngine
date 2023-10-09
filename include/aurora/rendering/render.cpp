@@ -10,10 +10,12 @@
 #include "engine/entity.hpp"
 #include "engine/log.hpp"
 #include "engine/project.hpp"
+#include "engine/assets/processor.hpp"
 #include "engine/runtime/monort.hpp"
 #include "graphics/lighting.hpp"
 #include "graphics/model.hpp"
 #include "utils/filesystem.hpp"
+#include "utils/input.hpp"
 
 unsigned int SCR_WIDTH = 800;
 unsigned int SCR_HEIGHT = 600;
@@ -22,7 +24,7 @@ GLFWwindow* window;
 
 bool mouse_cond, selectedFile;
 
-map<string, Shader*> Shader::loadedShaders;
+unordered_map<string, Shader*> Shader::loadedShaders;
 
 std::filesystem::path selected_file;
 std::string filetype, filedata;
@@ -33,11 +35,12 @@ TextEditor* text_editor;
 
 ImVec2 oldGS;
 
+bool renderUndeferred = true;
+
 //uint32_t Entity::selected_id;
 
 bool fidopen=false;
 int fdtype;
-
 mat4 view, projection;
 
 std::vector<RenderData*> RenderMgr::renderObjs;
@@ -164,6 +167,8 @@ void RenderMgr::InitGraphicsDevice()
 
     text_editor = new TextEditor;
 
+    Engine::InputMgr::Init();
+
     Logger::Log("Initialized graphics device. ", Logger::INFO, "GFX");
 }
 
@@ -211,6 +216,11 @@ void RenderMgr::UpdateGraphicsDevice()
     float aspect = flt width / flt height;
 
     projection = camera->GetProjectionMatrix(aspect);
+
+    if (ImGui::IsKeyPressed(ImGuiKey_R))
+    {
+        Shader::ReloadAllShaders();
+    }
 
 
     if (Project::ProjectLoaded()) {
@@ -298,83 +308,89 @@ void RenderMgr::UpdateGraphicsDevice()
         glDisable(GL_CULL_FACE);
     } 
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
     if (Project::ProjectLoaded())
     {
         bfr->Bind();
 
-        Scene::GetScene()->light_mgr->UpdateGeometryBuffer(camera->position, bfr->id);
+        float planeHeight = camera->near * tanf(camera->FOV * 0.5f * DEG2RAD) * 2;
+        float planeWidth = planeHeight * aspect;
+        float ncp = camera->near;
+
+        vec3 viewParams = { planeWidth, planeHeight, ncp };
+
+        Scene::GetScene()->light_mgr->UpdateGeometryBuffer(camera->position, bfr->id, view, viewParams, projection);
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    bfr->Bind();
+    if (renderUndeferred) {
 
-    for (RenderData* render_obj : renderObjs)
-    {
-
-        if (render_obj->deferred)
-            continue;
-
-        if (render_obj->useDepthMask == false) {
-            glDepthMask(GL_FALSE);
-            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-        }
-
-        if (render_obj->cullBack == false)
+        for (RenderData* render_obj : renderObjs)
         {
-            glEnable(GL_CULL_FACE);
-            glCullFace(GL_BACK);
-            glFrontFace(GL_CW);
-        } else
-        {
-            //glEnable(GL_CULL_FACE);
-            //glCullFace(GL_FRONT);
-            ////glFrontFace(GL_CW);
-            //glCullFace(GL_FRONT);
-            //glFrontFace(GL_CW);
+
+            if (render_obj->deferred)
+                continue;
+
+            if (render_obj->useDepthMask == false) {
+                glDepthMask(GL_FALSE);
+                glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+            }
+
+            if (render_obj->cullBack == false)
+            {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_BACK);
+                glFrontFace(GL_CW);
+            }
+            else
+            {
+                //glEnable(GL_CULL_FACE);
+                //glCullFace(GL_FRONT);
+                ////glFrontFace(GL_CW);
+                //glCullFace(GL_FRONT);
+                //glFrontFace(GL_CW);
+            }
+
+            if (render_obj->material) {
+                render_obj->material->Update();
+            }
+            if (render_obj->material->entity->material->uniforms.count("model"))
+                render_obj->material->entity->material->uniforms[("model")].m4 = render_obj->matrix;
+            if (render_obj->material->entity->material->GetUniform("view"))
+                render_obj->material->entity->material->uniforms[("view")].m4 = view;
+            if (render_obj->material->entity->material->GetUniform("projection"))
+                render_obj->material->entity->material->uniforms[("projection")].m4 = projection;
+
+            //render_obj->material->entity->material->uniforms[("albedo")->v3 = albedo;
+            //render_obj->material->entity->material->uniforms[("roughness")->f = roughness;
+            if (render_obj->material->entity->material->GetUniform("ao")) {
+                render_obj->material->entity->material->uniforms[("ao")].f = 1.0;
+            }
+            //render_obj->material->entity->material->uniforms[("metallic")->f = metallic;
+            if (render_obj->material->entity->material->GetUniform("viewPos")) {
+                render_obj->material->entity->material->uniforms[("viewPos")].v3 = camera->position;
+            }
+
+            if (render_obj->material->entity->material->GetUniform("cameraRight")) {
+                render_obj->material->entity->material->uniforms[("cameraRight")].v3 = camera->right;
+            }
+
+            if (render_obj->material->entity->material->GetUniform("cameraUp")) {
+                render_obj->material->entity->material->uniforms[("cameraUp")].v3 = camera->up;
+            }
+
+            if (render_obj->material->entity->material->GetUniform("lights[0].position")) {
+                Scene::GetScene()->light_mgr->EditMaterial(render_obj->material);
+                //bfr->Bind();
+            }
+
+            render_obj->mesh->Draw();
+
+            if (render_obj->useDepthMask == false) {
+                glDepthMask(GL_TRUE);
+                glDepthFunc(GL_LESS); // set depth function back to default
+            }
+            glDisable(GL_CULL_FACE);
         }
 
-        if (render_obj->material) {
-            render_obj->material->Update();
-        }
-        if (render_obj->material->entity->material->uniforms.count("model"))
-            render_obj->material->entity->material->uniforms[("model")].m4 = render_obj->matrix;
-        if (render_obj->material->entity->material->GetUniform("view"))
-            render_obj->material->entity->material->uniforms[("view")].m4 = view;
-        if (render_obj->material->entity->material->GetUniform("projection"))
-            render_obj->material->entity->material->uniforms[("projection")].m4 = projection;
-
-        //render_obj->material->entity->material->uniforms[("albedo")->v3 = albedo;
-        //render_obj->material->entity->material->uniforms[("roughness")->f = roughness;
-        if (render_obj->material->entity->material->GetUniform("ao")) {
-            render_obj->material->entity->material->uniforms[("ao")].f = 1.0;
-        }
-        //render_obj->material->entity->material->uniforms[("metallic")->f = metallic;
-        if (render_obj->material->entity->material->GetUniform("viewPos")) {
-            render_obj->material->entity->material->uniforms[("viewPos")].v3 = camera->position;
-        }
-
-        if (render_obj->material->entity->material->GetUniform("cameraRight")) {
-            render_obj->material->entity->material->uniforms[("cameraRight")].v3 = camera->right;
-        }
-
-        if (render_obj->material->entity->material->GetUniform("cameraUp")) {
-            render_obj->material->entity->material->uniforms[("cameraUp")].v3 = camera->up;
-        }
-
-        if (render_obj->material->entity->material->GetUniform("lights[0].position")) {
-            Scene::GetScene()->light_mgr->EditMaterial(render_obj->material);
-            //bfr->Bind();
-        }
-
-        render_obj->mesh->Draw();
-
-        if (render_obj->useDepthMask == false) {
-            glDepthMask(GL_TRUE);
-            glDepthFunc(GL_LESS); // set depth function back to default
-        }
-        glDisable(GL_CULL_FACE);
     }
 
     glBindVertexArray(0);
@@ -780,10 +796,23 @@ void RenderMgr::RenderEngineSpace()
 
                     if (filetype == "ModelFile" || filetype == "MeshFile")
                     {
-                        Entity* entity = Model::Load(path.string());
+                        ModelAsset* asset = Project::GetProject()->processor->GetAsset<ModelAsset>(path.string());
+
+                        if (asset && asset->prefab)
+                        {
+                            Scene::GetScene()->entity_mgr->InsertPrefab(asset->prefab);
+                        }
 
                        //MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
                        //renderer->mesh = Mesh::Load(path.string(), 0);
+                    }
+                    if (filetype == "PrefabFile")
+                    {
+                        Prefab* prefab = Project::GetProject()->processor->GetAsset<Prefab>(path.string());
+
+                        if (prefab) {
+                            Scene::GetScene()->entity_mgr->InsertPrefab(prefab);
+                        }
                     }
 
                     Logger::Log(path.relative_path().string()+", "+filetype, Logger::DBG, "DBG");
@@ -902,6 +931,11 @@ void RenderMgr::RenderEngineSpace()
                     MonoRuntime::m_data->coreAssembly->InvokeStaticMethod("Entity:Create()");
                 }
 
+                if (ImGui::Checkbox("Forward Rendering", &renderUndeferred))
+                {
+	                
+                }
+
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s.c_str());
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s2.c_str());
 
@@ -911,7 +945,7 @@ void RenderMgr::RenderEngineSpace()
             static float verticalAngle = 0.0f;
 
             float speed = 30.0f; // 3 units / second
-            float mouseSpeed = 0.00000005f;
+            float mouseSpeed = 1;
 
 
             // Initial position : on +Z
@@ -1024,7 +1058,7 @@ void RenderMgr::RenderEngineSpace()
         ImGui::Begin(ICON_FA_LIST " Properties");
         {
             if (Entity::selectedEntity) {
-                Entity* entity = currentScene->entity_mgr->entities[Entity::selected_id];
+                auto const& entity = currentScene->entity_mgr->entities[Entity::selected_id];
 
                 ImGui::Checkbox("Enabled", &entity->enabled);
 
@@ -1135,6 +1169,8 @@ void RenderMgr::RenderEngineSpace()
                                 }
                             }
 
+                            /*
+
                             if (entity->material->uniforms.size() > 0) {
 
                                 if (entity->material->uniforms.count("albedo")) {
@@ -1156,20 +1192,22 @@ void RenderMgr::RenderEngineSpace()
                                 }
                             }
 
-                            /*
+                            */
 
-                            for (pair<const string, Material::UniformData*> uniform : m->material->uniforms)
+                            
+
+                            for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
                             {
-                                switch (uniform.second->type)
+                                switch (uniform.second.type)
                                 {
                                 case GL_BOOL:
-                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second->b);
+                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second.b);
                                     break;
                                 case GL_INT:
-                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second->i);
+                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second.i);
                                     break;
                                 case GL_FLOAT:
-                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second->f);
+                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second.f, 0.01);
                                     break;
                                 case GL_FLOAT_VEC2:
                                 {
@@ -1177,14 +1215,14 @@ void RenderMgr::RenderEngineSpace()
 
                                     for (int i = 0; i < 2; ++i)
                                     {
-                                        v[i] = uniform.second->v2[i];
+                                        v[i] = uniform.second.v2[i];
                                     }
 
                                     ImGui::DragFloat2(uniform.first.c_str(), v);
 
                                     for (int i = 0; i < 2; ++i)
                                     {
-                                        uniform.second->v2[i] = v[i];
+                                        uniform.second.v2[i] = v[i];
                                     }
                                 }
                                 break;
@@ -1194,14 +1232,20 @@ void RenderMgr::RenderEngineSpace()
 
                                     for (int i = 0; i < 3; ++i)
                                     {
-                                        v[i] = uniform.second->v3[i];
+                                        v[i] = uniform.second.v3[i];
                                     }
 
-                                    ImGui::DragFloat3(uniform.first.c_str(), v);
+                                    if (uniform.first.find("_color") != string::npos) {
+                                        ImGui::ColorEdit3(uniform.first.c_str(), v);
+                                    }
+                                    else {
+
+                                        ImGui::DragFloat3(uniform.first.c_str(), v);
+                                    }
 
                                     for (int i = 0; i < 3; ++i)
                                     {
-                                        uniform.second->v3[i] = v[i];
+                                        uniform.second.v3[i] = v[i];
                                     }
                                 }
                                 break;
@@ -1211,14 +1255,20 @@ void RenderMgr::RenderEngineSpace()
 
                                     for (int i = 0; i < 4; ++i)
                                     {
-                                        v[i] = uniform.second->v4[i];
+                                        v[i] = uniform.second.v4[i];
                                     }
 
-                                    ImGui::DragFloat4(uniform.first.c_str(), v);
+                                    if (uniform.first.find("_color") != string::npos) {
+                                        ImGui::ColorEdit4(uniform.first.c_str(), v);
+                                    }
+                                    else {
+
+                                        ImGui::DragFloat4(uniform.first.c_str(), v);
+                                    }
 
                                     for (int i = 0; i < 4; ++i)
                                     {
-                                        uniform.second->v4[i] = v[i];
+                                        uniform.second.v4[i] = v[i];
                                     }
                                 }
                                 break;
@@ -1229,8 +1279,10 @@ void RenderMgr::RenderEngineSpace()
                                 case GL_FLOAT_MAT4:
                                     break;
                                 }
+
+                                entity->material->uniforms[uniform.first] = uniform.second;
                             }
-                            */
+                            
                         }
                     }
 
@@ -1304,7 +1356,7 @@ void RenderMgr::RenderEngineSpace()
 
                 if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_D))
                 {
-                    Entity* clone = currentScene->entity_mgr->DuplicateEntity(entity);
+                    auto const& clone = currentScene->entity_mgr->DuplicateEntity(entity.get());
 
                     clone->name = "Copy of " + clone->name;
                     Entity::selected_id = clone->id;
@@ -1413,7 +1465,7 @@ void RenderMgr::RenderEngineSpace()
 
         ImGui::Begin(ICON_FA_MAGNIFYING_GLASS " Explorer");
 
-        for (Entity* entity : currentScene->entity_mgr->entities)
+        for (auto const& entity : currentScene->entity_mgr->entities)
         {
             if (entity->transform->parent == nullptr) {
                 /*
@@ -1443,7 +1495,7 @@ void RenderMgr::RenderEngineSpace()
 
 *                */
 
-                Entity::DrawTree(entity);
+                Entity::DrawTree(entity.get());
             }
         }
 
@@ -1523,7 +1575,9 @@ void RenderMgr::RenderEngineSpace()
             {"ModelFile", Texture::Load("editor/icons/svgs/solid/cubes.png", false)},
             {"MeshFile", Texture::Load("editor/icons/svgs/solid/cube.png", false)},
             {"SceneFile", Texture::Load("editor/icons/svgs/solid/earth-americas.png", false)},
-                        {"ProjectFile", Texture::Load("editor/icons/svgs/solid/diagram-project.png", false)},
+            {"ProjectFile", Texture::Load("editor/icons/svgs/solid/diagram-project.png", false)},
+            {"PrefabFile", Texture::Load("editor/icons/svgs/solid/person.png", false)},
+
         };
 
 
@@ -1620,6 +1674,9 @@ void RenderMgr::RenderEngineSpace()
                 } else if (ext == ".auproject")
                 {
                     type = "ProjectFile";
+                } else if (ext == ".prefab")
+                {
+                    type = "PrefabFile";
                 }
             }
             else
@@ -1697,6 +1754,29 @@ void RenderMgr::RenderEngineSpace()
         ImGui::Columns(1);
 
         ImGui::EndChild();
+
+        ImGui::SetItemAllowOverlap();
+
+        ImGui::SetCursorPos(ImGui::GetWindowContentRegionMin());
+
+        ImGui::Dummy(ImGui::GetWindowSize());
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENT_MOVE"))
+            {
+                int payload_n = *(const int*)payload->Data;
+
+                auto const& ent = Scene::GetScene()->entity_mgr->entities[payload_n];
+                Prefab* prefab = ent->Export();
+
+                string filePath = assetdir.string() + "/" + ent->name + ".prefab";
+
+                Filesystem::WriteFileString(filePath, prefab->ToString());
+
+            }
+            ImGui::EndDragDropTarget();
+        }
 
         ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 64, "");
         //ImGui::SameLine();

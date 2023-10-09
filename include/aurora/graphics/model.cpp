@@ -13,7 +13,7 @@ Material::Material()
 void Material::Update()
 {
     if (shader) {
-        shader->reload();
+        //shader->reload();
         shader->use();
 
         std::vector<std::pair<std::string, int>> typenums;
@@ -375,6 +375,39 @@ Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* 
     return e;
 }
 
+Entity* processPrefab(aiNode* node, const aiScene* scene, Model* model, Entity* parent)
+{
+
+    Entity* e = new Entity;
+
+    e->SetParent(parent);
+
+    aiVector3t<float> scl;
+    aiVector3t<float> rot;
+    aiVector3t<float> pos;
+
+    node->mTransformation.Decompose(scl, rot, pos);
+
+    e->transform->position = { pos[0], pos[1], pos[3] };
+    //e->transform->scale = { scl[0], scl[1], scl[2] };
+
+    // process all the node's meshes (if any)
+    for (unsigned int i = 0; i < node->mNumMeshes; i++)
+    {
+        Mesh* m = model->meshes[node->mMeshes[i]];
+        MeshRenderer* r = e->AttachComponent<MeshRenderer>();
+        r->mesh = m;
+    }
+
+    // then do the same for each of its children
+    for (unsigned int i = 0; i < node->mNumChildren; i++)
+    {
+        processPrefab(node->mChildren[i], scene, model, e);
+    }
+
+    return e;
+}
+
 Entity* Model::Load(string path)
 {
 
@@ -402,10 +435,47 @@ Entity* Model::Load(string path)
     return entity;
 }
 
-Model* Model::LoadModel(std::string path)
+Entity* Model::LoadEntityPrefab(string path, Model* m)
 {
     Assimp::Importer import;
-    const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenBoundingBoxes);
+    const aiScene * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        Logger::Log("Failed to load model at  " + path + "for reason" + import.GetErrorString(), Logger::LOG_ERROR, "MODEL");
+        return nullptr;
+    }
+
+    filesystem::path p(path);
+
+    Entity* entity = new Entity;
+
+    entity->name = p.stem().string();
+
+    for (int i = 0; i < scene->mRootNode->mNumChildren; ++i)
+    {
+        Entity* e = processPrefab(scene->mRootNode->mChildren[i], scene, m, entity);
+
+    }
+
+    return entity;
+}
+
+Model* Model::LoadModel(std::string path, ModelImportSettings* settings)
+{
+    Assimp::Importer import;
+
+    unsigned flags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenBoundingBoxes;
+
+    if (settings) {
+
+        // global scale
+        
+		import.SetPropertyFloat(AI_CONFIG_GLOBAL_SCALE_FACTOR_KEY, settings->globalScale);
+        flags |= aiProcess_GlobalScale;
+    }
+
+    const aiScene* scene = import.ReadFile(path, flags);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
@@ -415,6 +485,8 @@ Model* Model::LoadModel(std::string path)
     //directory = path.substr(0, path.find_last_of('/'));
 
     Model* model = new Model();
+
+    model->scene = (aiScene*)import.GetScene();
 
     if (scene->mNumMeshes > 0)
     {
@@ -449,7 +521,7 @@ unsigned Model::GetIcon()
             s = new Shader("editor/shaders/8");
         } else
         {
-            s->reload();
+            //s->reload();
         }
 
         SetShader(s);

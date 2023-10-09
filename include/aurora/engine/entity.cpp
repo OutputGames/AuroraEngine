@@ -1,12 +1,15 @@
 #include "entity.hpp"
 
+#include "egs.hpp"
 #include "json.hpp"
 #include "log.hpp"
 #include "project.hpp"
+#include "assets/processor.hpp"
 #include "glm/gtx/matrix_decompose.hpp"
 #include "glm/gtx/quaternion.hpp"
 #include "imgui/imgui.h"
 #include "graphics/lighting.hpp"
+#include "physics/physics.hpp"
 #include "rendering/render.hpp"
 #include "runtime/monort.hpp"
 #include "utils/filesystem.hpp"
@@ -131,34 +134,23 @@ void Transform::Reset()
 void Transform::Delete()
 {
     if (parent) {
-        int i = 0;
 
-        for (Transform* child : parent->children)
-        {
-            if (child->entity->id == entity->id)
-            {
-                break;
-            }
-            i++;
-        }
-
-        parent->children.erase(parent->children.begin() + i);
-
-        parent = nullptr;
+        parent->children.erase(parent->children.begin() + index);
     }
 
     for (int i = 0; i < children.size(); ++i)
     {
-        Transform* t = children[i];
+        shared_ptr<Transform> t = children[i];
         t->entity->Delete();
     }
 }
 
 void Transform::Update()
 {
-    for (Transform* entity : children)
+    for (shared_ptr<Transform> entity : children)
     {
         if (entity->entity != nullptr) {
+            entity->entity->transform = entity.get();
             if (entity->entity->enabled) {
                 entity->entity->Update();
             }
@@ -219,7 +211,6 @@ void Entity::Delete()
     }
     if (transform) {
         transform->Delete();
-        transform = nullptr;
     }
 
    Scene::GetScene()->entity_mgr->RemoveEntity(this);
@@ -239,7 +230,7 @@ void Entity::SetParent(Entity* e)
     if (transform->parent) {
         int i = 0;
 
-        for (Transform* child : transform->parent->children)
+        for (shared_ptr<Transform> child : transform->parent->children)
         {
             if (child->entity->id == id)
             {
@@ -250,7 +241,7 @@ void Entity::SetParent(Entity* e)
 
         transform->parent->children.erase(transform->parent->children.begin() + i);
     }
-    for (Transform* entity : transform->children)
+    for (shared_ptr<Transform> entity : transform->children)
     {
 	    if (entity->entity->id == e->id)
 	    {
@@ -258,7 +249,9 @@ void Entity::SetParent(Entity* e)
 	    }
     }
 
-    e->transform->children.push_back(this->transform);
+    this->transform->index = e->transform->children.size();
+
+    e->transform->children.push_back(make_shared<Transform>(*this->transform));
 
     transform->parent = e->transform;
 }
@@ -326,7 +319,7 @@ void Entity::DrawTree(Entity* entity)
         }
 
         ImGui::Indent();
-		for (Transform* child : entity->transform->children)
+		for (shared_ptr<Transform> child : entity->transform->children)
 		{
 			DrawTree(child->entity);
 		}
@@ -345,7 +338,7 @@ void Entity::DrawTree(Entity* entity)
             selectedEntity = true;
         }
 
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoDisableHover | ImGuiDragDropFlags_SourceNoHoldToOpenOthers))
         {
             ImGui::Text(entity->name.c_str());
             ImGui::SetDragDropPayload("ENT_MOVE", &entity->id, sizeof(int));
@@ -372,6 +365,87 @@ void Entity::SetShader(Shader* shader)
     material->LoadShader(shader);
 }
 
+Prefab* Entity::Export()
+{
+    Prefab* prb = new Prefab(this);
+
+    return prb;
+}
+
+Entity* Entity::Load(string data)
+{
+    Entity* entity = new Entity;
+
+    entity->LoadData(data);
+
+    return entity;
+}
+
+void Entity::LoadData(string data)
+{
+    Entity* entity = this;
+
+    json ej = json::parse(data);
+
+    Entity* e = entity;
+
+    e->name = ej["name"];
+
+    json transform = ej["transform"];
+
+    e->transform->position = { transform["position"][0], transform["position"][1], transform["position"][2] };
+    e->transform->rotation = quat({ transform["rotation"][0], transform["rotation"][1], transform["rotation"][2] });
+
+    e->transform->scale = { transform["scale"][0], transform["scale"][1], transform["scale"][2] };
+
+    json children = transform["children"];
+
+    for (auto child : children)
+    {
+        string childData = child.dump();
+
+        Entity* childEntity = Load(childData);
+
+        childEntity->SetParent(entity);
+    }
+
+    json c = ej["components"];
+
+    auto obj = c.get<json::object_t>();
+
+    for (auto cs : obj)
+    {
+        e->AddComponent(cs.first);
+    }
+
+    for (auto component : e->components)
+    {
+        component->LoadFromJSON(c[component->GetName()]);
+    }
+
+    e->enabled = ej["enabled"];
+
+    e->material->LoadShader(Shader::CheckIfExists(ej["material"]["shader"]));
+
+    auto unifs = ej["material"]["uniforms"].get<json::object_t>();
+
+    for (auto unif : unifs)
+    {
+        if (e->material->uniforms.count(unif.first))
+        {
+            Material::UniformData ud = e->material->uniforms[unif.first];
+            ud.type = unif.second["type"];
+            ud.b = unif.second["b"];
+            ud.i = unif.second["i"];
+            ud.f = unif.second["f"];
+            ud.v2 = { unif.second["v2"][0],unif.second["v2"][1] };
+            ud.v3 = { unif.second["v3"][0],unif.second["v3"][1],unif.second["v3"][2] };
+            ud.v4 = { unif.second["v4"][0],unif.second["v4"][1],unif.second["v4"][2],unif.second["v4"][3] };
+            e->material->uniforms[unif.first] = ud;
+        }
+    }
+}
+
 void Entity::Update()
 {
 
@@ -396,7 +470,8 @@ Scene::EntityMgr::EntityMgr()
 
 void Scene::EntityMgr::Update()
 {
-    for (Entity* entity : entities)
+
+    for (auto const& entity : entities)
     {
         if (entity->enabled) {
             entity->Update();
@@ -410,7 +485,7 @@ Entity *Scene::EntityMgr::CreateEntity()
 
     ent->id = entities.size();
 
-    entities.push_back(ent);
+    InsertEntity(ent);
 
     return ent;
 
@@ -425,9 +500,10 @@ Entity *Scene::EntityMgr::CreateEntity(std::string name)
 
 void Scene::EntityMgr::RemoveEntity(Entity* entity)
 {
+
     int id = entity->id;
 
-    for (Entity* entity : entities)
+    for (auto const& entity : entities)
     {
         if (entity->id > id)
         {
@@ -436,15 +512,25 @@ void Scene::EntityMgr::RemoveEntity(Entity* entity)
     }
 
     entities.erase(entities.begin() + id);
-
-    delete entity;
 }
 
 Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity)
 {
     Entity* new_entity = CreateEntity(entity->name);
 
-    new_entity->transform = new Transform(*entity->transform);
+    new_entity->transform->position = entity->transform->position;
+    new_entity->transform->scale = entity->transform->scale;
+
+    new_entity->transform->rotation = entity->transform->rotation;
+
+    int ctr = 0;
+    for (auto const& child : entity->transform->children)
+    {
+        auto const& new_child = make_shared<Transform>(*child);
+        new_child->entity = DuplicateEntity(child->entity);
+        new_child->parent = new_entity->transform;
+            new_entity->transform->children.emplace_back(new_child);
+    }
 
     for (auto const& component : entity->components)
     {
@@ -454,8 +540,42 @@ Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity)
     }
     new_entity->Init();
 
+    new_entity->material->shader = entity->material->shader;
+    new_entity->material->ProcessUniforms();
+
+    for (pair<const string, Material::UniformData> uniform : new_entity->material->uniforms)
+    {
+        Material::UniformData* uniformPtr = &new_entity->material->uniforms[uniform.first];
+        Material::UniformData* preUniform = &entity->material->uniforms[uniform.first];
+
+        uniformPtr->type = preUniform->type;
+        uniformPtr->b = preUniform->b;
+        uniformPtr->f = preUniform->f;
+        uniformPtr->i = preUniform->i;
+        uniformPtr->m2 = preUniform->m2;
+        uniformPtr->m3 = preUniform->m3;
+        uniformPtr->m4 = preUniform->m4;
+        uniformPtr->v2 = preUniform->v2;
+        uniformPtr->v3 = preUniform->v3;
+        uniformPtr->v4 = preUniform->v4;
+
+        new_entity->material->uniforms[uniform.first] = *uniformPtr;
+    }
+
     return new_entity;
 
+}
+
+void Scene::EntityMgr::InsertEntity(Entity* entity)
+{
+    shared_ptr<Entity> ptr(entity);
+
+    entities.push_back(ptr);
+}
+
+void Scene::EntityMgr::InsertPrefab(Prefab* prefab)
+{
+    DuplicateEntity(prefab->GetEntity());
 }
 
 void Component::Init()
@@ -497,6 +617,9 @@ std::string Component::GetIcon()
 void Scene::OnRuntimeStart()
 {
     OnUnload();
+
+    saveState = EditorGameSystem::SaveCurrentState();
+
     runtimePlaying = true;
     {
         MonoRuntime::OnRuntimeStart(this);
@@ -513,6 +636,9 @@ void Scene::OnRuntimeStart()
 
 void Scene::OnRuntimeUpdate()
 {
+
+    physics_factory->Update();
+
     entity_mgr->Update();
 
     auto ents = entity_mgr->GetEntitiesWithComponent<ScriptComponent>();
@@ -524,7 +650,7 @@ void Scene::OnRuntimeUpdate()
         MonoRuntime::OnUpdateComponent(ent, dt);
     }
 
-    for (Entity* entity : entity_mgr->entities)
+    for (auto const& entity : entity_mgr->entities)
     {
         //MonoRuntime::OnUpdateEntity(entity, dt);
     }
@@ -534,6 +660,10 @@ void Scene::OnRuntimeUpdate()
 void Scene::OnRuntimeUnload()
 {
     runtimePlaying = false;
+    if (saveState) {
+        LoadScene(saveState->data);
+    }
+    saveState = nullptr;
     OnStart();
 }
 
@@ -545,6 +675,46 @@ void Scene::OnUnload()
 {
 }
 
+string Scene::ToString()
+{
+    json j;
+    j["name"] = name;
+
+    json entities;
+
+    for (auto const& entity : entity_mgr->entities)
+    {
+
+        entities[entity->name] = entity->Export()->ToJson();
+    }
+
+    j["entities"] = entities;
+    j["path"] = path;
+
+    return j.dump();
+}
+
+void Scene::LoadScene(string sc)
+{
+    light_mgr->Unload();
+
+    entity_mgr->entities.clear();
+
+    Shader::UnloadAllShaders();
+
+    json scene = json::parse(sc);
+
+    Scene* s = this;
+
+    for (auto ej : scene["entities"])
+    {
+        Entity* e = s->entity_mgr->CreateEntity(ej["name"]);
+
+        e->LoadData(ej.dump());
+
+    }
+}
+
 void Scene::OnUpdate()
 {
     entity_mgr->Update();
@@ -552,80 +722,18 @@ void Scene::OnUpdate()
 
 std::string Scene::SaveScene()
 {
-    json j;
-    j["name"] = name;
 
-    json entities;
-
-    for (Entity* entity : entity_mgr->entities)
-    {
-        json e;
-        e["name"] = entity->name;
-
-        Transform* t = entity->transform;
-
-        e["transform"]["position"] = {t->position.x, t->position.y,t->position.z };
-        for (int i = 0; i < 3; ++i)
-        {
-            e["transform"]["rotation"][i] = t->rotation[i];
-        }
-        e["transform"]["scale"] = { t->scale.x, t->scale.y,t->scale.z };
-
-        e["id"] = entity->id;
-
-        e["enabled"] = entity->enabled;
-
-        json c;
-
-        for (auto const& component : entity->components)
-        {
-            c[component->GetName()] = json::parse(component.get()->PrintToJSON());
-        }
-
-        e["components"] = c;
-
-        json m;
-
-        json mu;
-
-        for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
-        {
-            json u;
-
-            Material::UniformData* uniformD = &uniform.second;
-
-            u["type"] = uniformD->type;
-        	u["b"] = uniformD->b;
-            u["i"] = uniformD->i;
-            u["f"] = uniformD->f;
-            u["v2"] = { uniformD->v2.x, uniformD->v2.y };
-            u["v3"] = { uniformD->v3.x, uniformD->v3.y, uniformD->v3.z };
-            u["v4"] = { uniformD->v4.x, uniformD->v4.y, uniformD->v4.z, uniformD->v4.w };
-
-
-            mu[uniform.first] = u;
-
-        }
-
-        m["uniforms"] = mu;
-        m["shader"] = entity->material->shader->shaderDirectory;
-
-        e["material"] = m;
-
-        entities[entity->name] = e;
-    }
-
-    j["entities"] = entities;
-    j["path"] = path;
 
     std::string projFilePath = "resources/scenes/" + name + ".auscene";
     std::ofstream projFile(projFilePath, std::ofstream::out | std::ofstream::trunc);
 
-    projFile << j.dump();
+    string data = ToString();
+
+    projFile << data;
 
     projFile.close();
 
-    return j.dump();
+    return data;
 }
 
 Scene* Scene::GetScene()
@@ -644,9 +752,6 @@ Scene* Scene::LoadScene(std::string sc, bool in)
 
     Scene* s = new Scene;
     s->name = scene["name"];
-    s->entity_mgr = new Scene::EntityMgr;
-    s->light_mgr = new LightingMgr;
-   // s->physics_factory = new PhysicsFactory;
 
     s->light_mgr->sky = nullptr;
 
@@ -654,6 +759,26 @@ Scene* Scene::LoadScene(std::string sc, bool in)
 
     if (in) {
         Project::GetProject()->scenes.push_back(s);
+    } else
+    {
+        int itr = 0;
+        bool loaded = false;
+        for (Scene* value : Project::GetProject()->scenes)
+        {
+
+            if (value->name == s->name)
+            {
+                Project::GetProject()->scenes[itr] = s;
+                loaded = true;
+                break;
+            }
+
+            itr++;
+        }
+        if (!loaded)
+        {
+            Project::GetProject()->scenes.push_back(s);
+        }
     }
     Project::GetProject()->LoadScene(s->name);
 
@@ -661,48 +786,7 @@ Scene* Scene::LoadScene(std::string sc, bool in)
     {
         Entity* e = s->entity_mgr->CreateEntity(ej["name"]);
 
-        json transform = ej["transform"];
-
-        e->transform->position = { transform["position"][0], transform["position"][1], transform["position"][2] };
-        e->transform->rotation = quat({ transform["rotation"][0], transform["rotation"][1], transform["rotation"][2] });
-
-        e->transform->scale = { transform["scale"][0], transform["scale"][1], transform["scale"][2] };
-
-        json c = ej["components"];
-
-        auto obj = c.get<json::object_t>();
-
-        for (auto cs : obj)
-        {
-            e->AddComponent(cs.first);
-        }
-
-        for (auto component : e->components)
-        {
-            component->LoadFromJSON(c[component->GetName()]);
-        }
-
-        e->enabled = ej["enabled"];
-
-        e->material->LoadShader(Shader::CheckIfExists(ej["material"]["shader"]));
-
-        auto unifs = ej["material"]["uniforms"].get<json::object_t>();
-
-        for (auto unif : unifs)
-        {
-            if (e->material->uniforms.count(unif.first))
-            {
-                Material::UniformData ud = e->material->uniforms[unif.first];
-                ud.type = unif.second["type"];
-                ud.b = unif.second["b"];
-                ud.i = unif.second["i"];
-                ud.f = unif.second["f"];
-                ud.v2 = { unif.second["v2"][0],unif.second["v2"][1]};
-                ud.v3 = { unif.second["v3"][0],unif.second["v3"][1],unif.second["v3"][2]};
-                ud.v4 = { unif.second["v4"][0],unif.second["v4"][1],unif.second["v4"][2],unif.second["v4"][3]};
-                e->material->uniforms[unif.first] = ud;
-            }
-        }
+        e->LoadData(ej.dump());
 
     }
 
@@ -717,8 +801,6 @@ Scene* Scene::CreateScene(std::string s)
 
     Scene* scene = new Scene;
     scene->name = s;
-    scene->entity_mgr = new EntityMgr;
-    scene->light_mgr = new LightingMgr;
     //scene->physics_factory = new PhysicsFactory;
     {
         Entity* entity = scene->entity_mgr->CreateEntity("Skybox");
@@ -765,6 +847,13 @@ Scene* Scene::CreateScene(std::string s)
     return scene;
 }
 
+Scene::Scene()
+{
+    entity_mgr = new EntityMgr;
+    physics_factory = new PhysicsFactory;
+    light_mgr = new LightingMgr;
+}
+
 void Scene::SetPath(std::string p)
 {
     path = p;
@@ -794,10 +883,10 @@ vector<Entity*> Scene::EntityMgr::GetEntitiesWithComponent()
 {
     vector<Entity*> cmpEntities;
 
-    for (Entity* entity : entities)
+    for (auto const& entity : entities)
     {
         if (entity->GetComponent<T>()) {
-            cmpEntities.push_back(entity);
+            cmpEntities.push_back(entity.get());
         }
     }
 

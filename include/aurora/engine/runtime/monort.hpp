@@ -10,6 +10,7 @@
 #include "mono/metadata/mono-debug.h"
 #include "mono/metadata/threads.h"
 #include "mono/metadata/reflection.h"
+#include "mono/metadata/attrdefs.h"
 #include "engine/entity.hpp"
 
 #define MONORUNTIME
@@ -29,6 +30,20 @@ struct MonoRuntime
         void AddInternalCall(string method, const void* func);
     };
 
+    enum class ScriptFieldType
+    {
+        None = 0,
+        Float, Vector2, Vector3, Vector4,
+        Int, Bool, UInt, Double, Short, Byte
+    };
+
+    struct ScriptField
+    {
+        ScriptFieldType type;
+        string name;
+        MonoClassField* class_field;
+    };
+
     struct MonoScript
     {
     public:
@@ -38,9 +53,14 @@ struct MonoRuntime
         MonoObject* Instantiate();
         MonoMethod* GetMethod(string name, int parameterCount);
         MonoObject* InvokeMethod(MonoObject* instance, MonoMethod* method, void** params = nullptr);
+
+        const map<string, ScriptField>& GetFields() const { return fields; };
+
         string cNamespace, cName;
 
         MonoClass* monoClass = nullptr;
+
+        map<string, ScriptField> fields;
     };
 
     struct MonoScriptInstance
@@ -51,13 +71,37 @@ struct MonoRuntime
         void InvokeOnCreate();
         void InvokeOnUpdate(float dt);
 
+        MonoScript* GetClass();
+
+        template<typename T>
+        T GetFieldValue(const string name)
+        {
+            bool success = GetFieldValueInternal(name, fieldValueBuffer);
+
+            if (!success)
+                return T();
+
+            return *(T*)fieldValueBuffer;
+        }
+
+        template<typename T>
+        void SetFieldValue(const string name, const T value)
+        {
+            SetFieldValueInternal(name, &value);
+        }
+
         MonoObject* m_instance = nullptr;
     private:
         MonoScript* m_script;
 
+        bool GetFieldValueInternal(const string name, void* buffer);
+        void SetFieldValueInternal(const string name, const void* value);
+
         MonoMethod* m_initMethod = nullptr;
         MonoMethod* m_updateMethod = nullptr;
         MonoMethod* m_constructor = nullptr;
+
+        inline static char fieldValueBuffer[8];
     };
 
     static void Initialize();
@@ -67,7 +111,7 @@ struct MonoRuntime
     static void OnRuntimeUnload();
     static void CompileProject(string path, string outPath);
     static bool ClassExists(string className);
-
+    static MonoScriptInstance* GetEntityScriptInstance(uint32_t entityId);
 
     static void OnCreateComponent(Entity* entity);
     static void OnUpdateComponent(Entity* entity, float dt);
@@ -88,7 +132,15 @@ struct MonoRuntime
 		MonoDomain* appDomain;
 
 		MonoAssemblyAurora* coreAssembly;
+
+        unordered_map<string, ScriptFieldType> scriptFieldTypeMap = {
+        	{"System.Single", ScriptFieldType::Float},
+        	{"System.Double", ScriptFieldType::Double}
+        };
     };
+
+    static ScriptFieldType MonoTypeToScriptFieldType(MonoType* type);
+    static string FieldTypeToString(ScriptFieldType type);
 
     static std::string MonoStringToUTF8(MonoString* monoString);
     static MonoString* UTF8ToMonoString(string str);

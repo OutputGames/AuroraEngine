@@ -6,6 +6,7 @@
 #include "entity.hpp"
 #include "graphics/billboard.hpp"
 #include "graphics/lighting.hpp"
+#include "physics/physics.hpp"
 #include "runtime/scriptcomponent.hpp"
 
 struct AURORA_API ComponentRegistry
@@ -22,11 +23,14 @@ struct AURORA_API ComponentRegistry
 
     };
 
-    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent>;
+    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent, RigidBody3D>;
     
 };
 
-template <class Comp>
+template <typename... Comp>
 void RegisterComponent();
+
+template <typename... Comp>
+void RegisterComponent(ComponentRegistry::ComponentRegister<Comp...>);
 
 #endif

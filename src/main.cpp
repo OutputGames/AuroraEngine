@@ -1,6 +1,7 @@
 // Your First C++ Program
 
 #include "aurora/aurora.hpp"
+#include "engine/assets/processor.hpp"
 
 int main() {
 
@@ -10,7 +11,7 @@ int main() {
 
     while (!RenderMgr::CheckCloseWindow()) {
         if (Project::ProjectLoaded()) {
-            //Scene::GetScene()->physics_factory->Update();
+            Project::GetProject()->processor->CheckForEdits();
             if (Scene::GetScene()->runtimePlaying) {
                 Scene::GetScene()->OnRuntimeUpdate();
             } else

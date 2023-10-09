@@ -13,6 +13,7 @@
 
 #include "texture.hpp"
 
+struct Model;
 struct AURORA_API TextureColorBuffer;
 struct AURORA_API Mesh;
 struct AURORA_API Entity;
@@ -207,6 +208,7 @@ struct AURORA_API Mesh
         std::string name;
         std::string path;
         int index;
+        Model* parent;
 	};
 
 	MeshData* data;
@@ -230,7 +232,12 @@ struct AURORA_API Model
 
 	void Draw();
 
-	static Model* LoadModel(std::string path);
+	struct ModelImportSettings
+	{
+        float globalScale;
+	};
+
+	static Model* LoadModel(std::string path, ModelImportSettings* settings=nullptr);
 
     std::map<std::string, BoneInfo> m_BoneInfoMap; //
     int m_BoneCounter = 0;
@@ -276,6 +283,8 @@ struct AURORA_API Model
 
     static Entity* Load(string path);
 
+	static Entity* LoadEntityPrefab(string path, Model* m);
+
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene)
     {
         for (int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex)
@@ -314,6 +323,7 @@ struct AURORA_API Model
 
 private:
 
+	aiScene* scene;
     TextureColorBuffer* buffer = nullptr;
     unsigned int iconID=0;
 

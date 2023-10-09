@@ -147,7 +147,7 @@ void PointLight::CalcShadowMap()
 	lightView = glm::lookAt(entity->transform->position, vec3{ 0 }, glm::vec3(0.0, 1.0, 0.0));
 	spaceMatrix = lightProjection * lightView;
 
-	simpleDepthShader->reload();
+	//simpleDepthShader->reload();
 	simpleDepthShader->use();
 	simpleDepthShader->setMat4("lightSpaceMatrix", spaceMatrix);
 	simpleDepthShader->setFloat("near_plane", near_plane);
@@ -365,7 +365,7 @@ void Skybox::LoadTexture(std::string path)
 		glGenRenderbuffers(1, &captureRBO);
 	}
 
-	Shader equirectangularToCubemapShader("editor/shaders/6");
+	Shader equirectangularToCubemapShader("editor/shaders/6/", false, false);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
 	glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
@@ -460,8 +460,8 @@ void Skybox::LoadTexture(std::string path)
 
 	cubemap_texture = texture;
 
-	Shader irradianceShader("editor/shaders/4");
-	Shader prefilterShader("editor/shaders/5");
+	Shader irradianceShader("editor/shaders/4/", false, false);
+	Shader prefilterShader("editor/shaders/5/", false, false);
 
 	// pbr: create an irradiance cubemap, and re-scale capture FBO to irradiance scale.
 	glGenTextures(1, &irradianceMap);
@@ -577,7 +577,7 @@ void LightingMgr::EditMaterial(Material* material)
 	{
 		glGenTextures(1, &brdfLUTTexture);
 
-		Shader brdfShader("editor/shaders/3");
+		Shader brdfShader("editor/shaders/3", false, false);
 
 		// pre-allocate enough memory for the LUT texture.
 		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
@@ -751,7 +751,6 @@ unsigned LightingMgr::GetGeometryBuffer()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
-
 		glGenTextures(1, &gCombined);
 		glBindTexture(GL_TEXTURE_2D, gCombined);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -795,7 +794,7 @@ unsigned LightingMgr::GetGeometryBuffer()
 			glGenTextures(1, &brdfLUTTexture);
 		}
 
-		Shader brdfShader("editor/shaders/3/");
+		Shader brdfShader("editor/shaders/3/", false, false);
 
 		brdfShader.reload();
 
@@ -825,7 +824,7 @@ unsigned LightingMgr::GetGeometryBuffer()
 
 }
 
-void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer)
+void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 viewMatrix, vec3 viewParams, mat4 projection)
 {
 	static Shader* shaderLightingPass;
 
@@ -836,7 +835,7 @@ void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer)
 
 	float time = glfwGetTime();
 
-	shaderLightingPass->reload();
+	//shaderLightingPass->reload();
 
 	glm::vec2 screenSize = RenderMgr::GetSceneWinSize();
 
@@ -854,6 +853,11 @@ void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer)
 	shaderLightingPass->setInt("irradiance", 5);
 	shaderLightingPass->setInt("prefilter", 6);
 	shaderLightingPass->setInt("cubemap", 7);
+
+	shaderLightingPass->setMat4("view", viewMatrix);
+	shaderLightingPass->setVec3("viewParams", viewParams);
+	shaderLightingPass->setVec2("screenParams", screenSize);
+	shaderLightingPass->setMat4("projection", projection);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gPosition);
@@ -885,7 +889,7 @@ void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer)
 			shaderLightingPass->setVec3(light_un + ".color", light->color);
 			shaderLightingPass->setBool(light_un + ".enabled", light->enabled);
 			shaderLightingPass->setFloat(light_un + ".power", light->power);
-			shaderLightingPass->setMat4(light_un + ".position", light->spaceMatrix);
+			shaderLightingPass->setMat4(light_un + ".lightSpaceMatrix", light->spaceMatrix);
 
 			/*
 
@@ -929,4 +933,21 @@ void LightingMgr::ResizeGeometryBuffer(vec2 size)
 	glDeleteTextures(1, &gCombined);
 
 	gBuffer = 0;
+}
+
+void LightingMgr::Unload()
+{
+	lights.clear();
+	sky = nullptr;
+
+	glDeleteFramebuffers(1, &gBuffer);
+
+	glDeleteTextures(1, &gPosition);
+	glDeleteTextures(1, &gNormal);
+	glDeleteTextures(1, &gAlbedoSpec);
+	glDeleteTextures(1, &gCombined);
+	glDeleteTextures(1, &brdfLUTTexture);
+
+	gBuffer = 0;
+	brdfLUTTexture = 0;
 }

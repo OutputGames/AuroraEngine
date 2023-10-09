@@ -2,24 +2,32 @@
 
 #include "engine/runtime/monort.hpp"
 
-template <class Comp>
+template <typename ... C>
 void RegisterComponent()
 {
-    string rawname = typeid(Comp).name();
+    ([]()
+    {
+	    string rawname = typeid(C).name();
 
-    string sub = "class ";
+	    string sub = "class ";
 
-    std::string::size_type i = rawname.find(sub);
+	    std::string::size_type i = rawname.find(sub);
 
-    if (i != std::string::npos)
-        rawname.erase(i, sub.length());
+	    if (i != std::string::npos)
+	        rawname.erase(i, sub.length());
 
 
-    ComponentRegistry::cmp_map[rawname] = &ComponentRegistry::createInstance<Comp>;
+	    ComponentRegistry::cmp_map[rawname] = &ComponentRegistry::createInstance<C>;
 
-    Logger::Log("Registered component: " + rawname, Logger::DBG, "BOOT");
+	    Logger::Log("Registered component: " + rawname, Logger::DBG, "BOOT");
+    }(), ...);
 }
 
+template <typename ... C>
+void RegisterComponent(ComponentRegistry::ComponentRegister<C...>)
+{
+    RegisterComponent<C ...>();
+}
 
 
 void InitEngine()
@@ -29,13 +37,7 @@ void InitEngine()
 
     //std::cout << "Started Aurora at " << Engine::Filesystem::GetCurrentDir() << std::endl;
 
-    RegisterComponent<Billboard>();
-    RegisterComponent<PointLight>();
-    RegisterComponent<MeshRenderer>();
-    RegisterComponent<ModelRenderer>();
-    RegisterComponent<Skybox>();
-    RegisterComponent<ScriptComponent>();
-    //RegisterComponent<Rigidbody>();
+    RegisterComponent(ComponentRegistry::RegisteredComponents());
 
     RenderMgr::InitGraphicsDevice();
     MonoRuntime::Initialize();

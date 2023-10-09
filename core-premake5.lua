@@ -13,6 +13,10 @@ project "AuroraRuntime"
    defines {"GRAPHICS_OPENGL", 'MONO_HOME="C:/Program Files/Mono/"'}
 
    files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp" }
+   --removefiles {"include/bullet3/**"}
+   --files {"include/bullet3/src/**.hpp", "include/bullet3/src/**.h"}
+
+
 
    files {"resources\\**", "**.json", "lib\\**"}
 
@@ -58,5 +62,5 @@ project "AuroraRuntime"
         defines { "NDEBUG" }
         optimize "On"
         staticruntime "off"
-        runtime "Release"
+        runtime "Release" 
 --check_imgui()

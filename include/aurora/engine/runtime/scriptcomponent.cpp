@@ -19,6 +19,25 @@ void ScriptComponent::EngineRender()
 
     }
 
+    // Fields
+
+    MonoRuntime::MonoScriptInstance* instance = MonoRuntime::GetEntityScriptInstance(entity->id);
+
+    if (instance)
+    {
+        const auto& fields = instance->GetClass()->GetFields();
+
+        for (const auto& [name, field] : fields)
+        {
+	        if (field.type == MonoRuntime::ScriptFieldType::Float)
+	        {
+                float data = instance->GetFieldValue<float>(name);
+                ImGui::DragFloat(name.c_str(), &data, 0.01f);
+                instance->SetFieldValue<float>(name, data);
+	        }
+        }
+    }
+
     if (!scriptExists)
         ImGui::PopStyleColor();
 

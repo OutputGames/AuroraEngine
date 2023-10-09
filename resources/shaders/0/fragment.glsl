@@ -10,10 +10,11 @@ in vec3 WorldPos;
 in vec3 Normal;
 
 // material parameters
-uniform vec3 albedo;
+uniform vec3 albedo_color;
 uniform float metallic;
 uniform float roughness;
 uniform float ao;
+uniform float alpha;
 
 const int light_count = 10;
 
@@ -183,8 +184,14 @@ float ShadowCalculation(Light light)
 
 void main()
 {		
-    gPosition = vec4(WorldPos,1.0);
-    gNormal = vec4(normalize(Normal),1.0);
-    gAlbedoSpec = vec4(albedo, 1.0);
-    gCombined = vec4(roughness, metallic, 1.0,1.0);
+    gPosition = vec4(WorldPos,alpha);
+    gNormal = vec4(normalize(Normal),alpha);
+
+    vec3 diffuse = texture(material.texture_diffuse0, TexCoords).rgb;
+
+    diffuse *= albedo_color;
+
+    gAlbedoSpec = vec4(diffuse, alpha);
+
+    gCombined = vec4(roughness, metallic, 1.0,alpha);
 }  

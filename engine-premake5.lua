@@ -14,10 +14,12 @@ project "AuroraEngine"
 
    files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp", "src/**.cpp", "src/**.c" }
    removefiles { "include/aurora/**.cpp", "include/aurora/**.c"}
+   --removefiles {"include/reactphysics3d/**"}
+   --files {"include/reactphysics3d/include/**"}
 
    files {"resources\\**", "**.json", "lib\\**"}
 
-   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet"}
+   includedirs {"include\\", "include\\aurora\\"}
 
 
    links {

@@ -17,6 +17,7 @@ public:
 
     string name;
 
+
 };
 
 #endif // SCRIPT_CMP
