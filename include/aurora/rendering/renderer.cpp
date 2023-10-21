@@ -2,6 +2,8 @@
 
 #include "render.hpp"
 #include "engine/imgui_ext.hpp"
+#include "engine/project.hpp"
+#include "engine/assets/processor.hpp"
 
 CLASS_DEFINITION(Component, MeshRenderer)
 CLASS_DEFINITION(Component, ModelRenderer)
@@ -11,7 +13,7 @@ using namespace nlohmann;
 
 void MeshRenderer::Init()
 {
-	entity->material->LoadShader(Shader::CheckIfExists("editor/shaders/0"));
+	entity->material->LoadShader(Shader::CheckIfExists("Assets/Editor/shaders/0"));
 }
 
 void MeshRenderer::Update()
@@ -40,7 +42,7 @@ std::string MeshRenderer::PrintToJSON()
 	j["mesh_path"] = mesh->data->path;
 	j["mesh_index"] = mesh->data->index;
 
-	return j.dump();
+	return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void MeshRenderer::LoadFromJSON(nlohmann::json data)
@@ -50,7 +52,32 @@ void MeshRenderer::LoadFromJSON(nlohmann::json data)
 
 void MeshRenderer::EngineRender()
 {
-	ImGui::FileDialog();
+	vector<Asset*> assets = Project::GetProject()->processor->GetAssetsOfType(Asset::ModelAsset);
+
+	string modelName = filesystem::path(mesh->data->parent->path).stem().string();
+
+	if (ImGui::BeginCombo("Model", modelName.c_str())) {
+
+		for (Asset* asset : assets)
+		{
+			ModelAsset* modelAsset = (ModelAsset*)asset;
+
+			if (ImGui::Selectable(filesystem::path(modelAsset->path).string().c_str()))
+			{
+				meshIndex = 0;
+				mesh = modelAsset->model->meshes[meshIndex];
+			}
+		}
+
+		ImGui::EndCombo();
+	}
+
+
+
+	if (ImGui::SliderInt("Mesh Index", &meshIndex, 0, mesh->data->parent->meshes.size()-1))
+	{
+		mesh = mesh->data->parent->meshes[meshIndex];
+	}
 }
 
 std::string MeshRenderer::GetIcon()
@@ -110,7 +137,7 @@ std::string ModelRenderer::PrintToJSON()
 
 	j["model"] = m;
 
-	return j.dump();
+	return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void ModelRenderer::LoadFromJSON(nlohmann::json data)

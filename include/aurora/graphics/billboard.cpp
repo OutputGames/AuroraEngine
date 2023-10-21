@@ -52,7 +52,7 @@ void Billboard::Init()
 
     mesh = Mesh::Upload(mesh_data);
 
-    Shader* shader = new Shader("resources/shaders/2/");
+    Shader* shader = new Shader("Assets/shaders/2/");
 
     entity->material->shader = shader;
     entity->material->ProcessUniforms();
@@ -60,9 +60,9 @@ void Billboard::Init()
 
 
     
-    Model* model = Model::LoadModel("editor/models/plane.fbx");
+    Model* model = Model::LoadModel("Assets/Editor/models/plane.fbx");
 
-    Shader * shader = new Shader("editor/shaders/2/");
+    Shader * shader = new Shader("Assets/Editor/shaders/2/");
 
     entity->SetShader(shader);
 
@@ -138,7 +138,7 @@ std::string Billboard::PrintToJSON()
         j["color"][i] = color[i];
     }
 
-    return j.dump();
+    return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void Billboard::LoadFromJSON(nlohmann::json data)

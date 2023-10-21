@@ -187,7 +187,7 @@ void renderCube2()
 CubemapTexture CubemapTexture::LoadFromPath(string p)
 {
 
-    Shader equirectangularToCubemapShader("editor/shaders/6/");
+    Shader equirectangularToCubemapShader("Assets/Editor/shaders/6/");
 
     // pbr: setup framebuffer
     // ----------------------

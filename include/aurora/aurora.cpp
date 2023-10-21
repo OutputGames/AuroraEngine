@@ -50,8 +50,8 @@ void InitEngine()
         Entity* entity = Scene::GetScene()->entity_mgr->CreateEntity("TestEntity");
 
         ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-        renderer->model = Model::LoadModel("resources/models/test0.fbx");
-        Shader* shader = new Shader("resources/shaders/0/");
+        renderer->model = Model::LoadModel("Assets/models/test0.fbx");
+        Shader* shader = new Shader("Assets/shaders/0/");
         renderer->model->SetShader(shader);
 
         entity->transform->scale = vec3(0.1);
@@ -62,8 +62,8 @@ void InitEngine()
         Entity* entity = Scene::GetScene()->entity_mgr->CreateEntity("TestEntity2");
 
         ModelRenderer* renderer = entity->AttachComponent<ModelRenderer>();
-        renderer->model = Model::LoadModel("resources/models/cube.fbx");
-        Shader* shader = new Shader("resources/shaders/0/");
+        renderer->model = Model::LoadModel("Assets/models/cube.fbx");
+        Shader* shader = new Shader("Assets/shaders/0/");
         renderer->model->SetShader(shader);
     }
 
@@ -88,7 +88,7 @@ void InitEngine()
 
         Skybox* sb = entity->AttachComponent<Skybox>();
 
-        sb->cubemap_texture = CubemapTexture::LoadFromPath("resources/textures/cubemap/test/");
+        sb->cubemap_texture = CubemapTexture::LoadFromPath("Assets/textures/cubemap/test/");
 
         entity->Init();
 

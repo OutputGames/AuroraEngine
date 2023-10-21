@@ -26,6 +26,8 @@ public:
     std::string GetIcon() override;
 
     Mesh* mesh;
+private:
+    int meshIndex=0;
 };
 
 class ModelRenderer : public Component 

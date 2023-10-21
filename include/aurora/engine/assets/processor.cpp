@@ -1,5 +1,6 @@
 #include "processor.hpp"
 
+#include "graphics/animation.hpp"
 #include "utils/filesystem.hpp"
 
 using recursive_directory_iterator = std::filesystem::recursive_directory_iterator;
@@ -24,6 +25,8 @@ string Asset::AssetTypeToString(AssetType type)
 		return "Texture";
 	case PrefabAsset:
 		return "Prefab";
+	case MaterialAsset:
+		return "Material";
 	default:
 		break;
 	}
@@ -56,6 +59,15 @@ Asset::AssetType Asset::GetTypeFromExtension(string path)
 	{
 		return PrefabAsset;
 	}
+	if (ext == ".smd")
+	{
+		return AnimationAsset;
+	}
+	if (ext == ".mat")
+	{
+		return MaterialAsset;
+	}
+	if (ext == ".shader") { return ShaderAsset; }
 	return FileAsset;
 }
 
@@ -63,7 +75,7 @@ string Prefab::ToString()
 {
 	json e = ToJson();
 
-	return e.dump();
+	return e.dump(JSON_INDENT_AMOUNT);
 }
 
 json Prefab::ToJson()
@@ -107,33 +119,7 @@ json Prefab::ToJson()
 
 	e["components"] = c;
 
-	json m;
-
-	json mu;
-
-	for (pair<const string, Material::UniformData> uniform : entity.material->uniforms)
-	{
-		json u;
-
-		Material::UniformData* uniformD = &uniform.second;
-
-		u["type"] = uniformD->type;
-		u["b"] = uniformD->b;
-		u["i"] = uniformD->i;
-		u["f"] = uniformD->f;
-		u["v2"] = { uniformD->v2.x, uniformD->v2.y };
-		u["v3"] = { uniformD->v3.x, uniformD->v3.y, uniformD->v3.z };
-		u["v4"] = { uniformD->v4.x, uniformD->v4.y, uniformD->v4.z, uniformD->v4.w };
-
-
-		mu[uniform.first] = u;
-
-	}
-
-	m["uniforms"] = mu;
-	m["shader"] = entity.material->shader->shaderDirectory;
-
-	e["material"] = m;
+	e["material"] = entity.material->Export();
 
 	return e;
 }
@@ -150,7 +136,8 @@ void AssetProcessor::SetupImporters()
 	assetImportFuncs[Asset::ShaderAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<ShaderImporter>(path); };
 	assetImportFuncs[Asset::TextureAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<AssetImporter>(path); };
 	assetImportFuncs[Asset::PrefabAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<PrefabImporter>(path); };
-	assetImportFuncs[Asset::AnimationAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<AssetImporter>(path); };
+	assetImportFuncs[Asset::AnimationAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<AnimationImporter>(path); };
+	assetImportFuncs[Asset::MaterialAsset] = [](AssetProcessor* processor, string path) {return processor->ImportAsset<MaterialImporter>(path); };
 
 	// Post processors
 
@@ -186,36 +173,69 @@ void AssetProcessor::CheckForEdits()
 		}
 	}
 	int ctr = 0;
-	for (Asset* cached_file : cachedFiles)
+	for (const auto& [cachedPath, cached_file] : cachedFiles)
 	{
-		if (filesystem::exists(cached_file->path)) {
-			std::replace(cached_file->path.begin(), cached_file->path.end(), '/', '\\');
-			filesystem::file_time_type lwt = filesystem::last_write_time(cached_file->path);
-			if (cached_file->lastWriteTime != lwt)
-			{
-				cout << cached_file->path << " was modified, running " << Asset::AssetTypeToString(cached_file->type) << " processor" << endl;
-				cached_file->lastWriteTime = lwt;
+		if (cached_file) {
+			if (filesystem::exists(cached_file->path)) {
+				std::replace(cached_file->path.begin(), cached_file->path.end(), '/', '\\');
+				filesystem::file_time_type lwt = filesystem::last_write_time(cached_file->path);
+				if (cached_file->lastWriteTime != lwt)
+				{
+					cout << cached_file->path << " was modified, running " << Asset::AssetTypeToString(cached_file->type) << " processor" << endl;
+					ReloadAsset(cachedPath);
+				}
 			}
-		} else
-		{
-			cachedFiles.erase(cachedFiles.begin() + ctr);
+			else
+			{
+				cachedFiles.erase(cachedPath);
+			}
 		}
 		ctr++;
+	}
+}
+
+vector<Asset*> AssetProcessor::GetAssetsOfType(Asset::AssetType type)
+{
+	vector<Asset*> assets;
+	for (const auto& [cachedPath ,cached_file] : cachedFiles)
+	{
+		if (cached_file->type == type)
+		{
+			assets.push_back(cached_file);
+		}
+	}
+
+	return assets;
+}
+
+void AssetProcessor::CreateDefaultAsset(string path, Asset::AssetType type)
+{
+	switch (type)
+	{
+	default:
+		Filesystem::CreateFile(path);
+		break;
+	case Asset::ShaderAsset:
+	{
+		string data = Shader::CreateShader();
+
+		Filesystem::WriteFileString(path, data);
+		break;
+	}
+	case Asset::MaterialAsset:
+	{
+		string data = (new Material())->Export();
+
+		Filesystem::WriteFileString(path, data);
+	}
 	}
 }
 
 bool AssetProcessor::IsFileCached(string path)
 {
 	std::replace(path.begin(), path.end(), '/', '\\');
-	for (Asset* cached_file : cachedFiles)
-	{
-		if (cached_file->path == path)
-		{
-			return true;
-			break;
-		}
-	}
-	return false;
+
+	return (cachedFiles.find(path) != cachedFiles.end());
 }
 
 void AssetProcessor::ImportNewAsset(string path)
@@ -225,7 +245,19 @@ void AssetProcessor::ImportNewAsset(string path)
 	Asset* asset = assetImportFuncs[type](this, path);
 	asset->path = path;
 	asset->lastWriteTime = filesystem::last_write_time(path);
-	cachedFiles.push_back(asset);
+	asset->type = type;
+	cachedFiles.insert({ asset->path,asset });
+}
+
+void AssetProcessor::ReloadAsset(string path)
+{
+	std::replace(path.begin(), path.end(), '/', '\\');
+	Asset::AssetType type = Asset::GetTypeFromExtension(path);
+	Asset* asset = assetImportFuncs[type](this, path);
+	asset->path = path;
+	asset->lastWriteTime = filesystem::last_write_time(path);
+	asset->type = type;
+	cachedFiles[asset->path] = asset;
 }
 
 void AssetImporter::SetupProcessors()
@@ -237,16 +269,70 @@ void AssetImporter::SetupProcessors()
 	}
 }
 
+void AssetImporter::Preprocess(Asset::AssetType type)
+{
+	switch (type)
+	{
+	case Asset::PrefabAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPreprocessPrefab();
+		}
+		break;
+	case Asset::ModelAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPreprocessModel();
+		}
+		break;
+	case Asset::MaterialAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPreprocessMaterial();
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+void AssetImporter::Postprocess(Asset::AssetType type, Asset* asset)
+{
+	switch (type)
+	{
+	case Asset::PrefabAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPostprocessPrefab(static_cast<Prefab*>(asset));
+		}
+		break;
+	case Asset::ModelAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPostprocessModel(static_cast<ModelAsset*>(asset));
+		}
+		break;
+	case Asset::MaterialAsset:
+		for (AssetPostprocessor* processor : AssetPostprocessor::processors)
+		{
+			processor->OnPostprocessMaterial(static_cast<MaterialAsset*>(asset));
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 ShaderAsset* ShaderImporter::ImportAsset()
 {
 
 	cout << "importing shader " << importPath << endl;
 
-	Shader* shader = new Shader(importPath, IsGeometryShader, LogShader);
+	Shader* shader = new Shader(importPath.c_str(), true);
 
 	ShaderAsset* asset = new ShaderAsset;
 
-	asset->shader = shader;
+	asset->shader = nullptr;
 
 	return asset;
 }
@@ -254,21 +340,11 @@ ShaderAsset* ShaderImporter::ImportAsset()
 Prefab* PrefabImporter::ImportAsset()
 {
 
-	for (AssetPostprocessor* processor : AssetPostprocessor::processors)
-	{
-		processor->OnPreprocessPrefab();
-	}
-
 	//cout << "importing prefab " << importPath << endl;
 
 	string data = Filesystem::ReadFileString(importPath);
 
 	Prefab* prefab = new Prefab(Entity::Load(data));
-
-	for (AssetPostprocessor* processor : AssetPostprocessor::processors)
-	{
-		processor->OnPostprocessPrefab(prefab);
-	}
 
 	return prefab;
 }
@@ -276,12 +352,7 @@ Prefab* PrefabImporter::ImportAsset()
 ModelAsset* ModelImporter::ImportAsset()
 {
 
-	for (AssetPostprocessor* processor : AssetPostprocessor::processors)
-	{
-		processor->OnPreprocessModel();
-	}
-
-	cout << "importing model " << importPath << endl;
+	//cout << "importing model " << importPath << endl;
 
 	ModelAsset* asset = new ModelAsset;
 
@@ -290,13 +361,43 @@ ModelAsset* ModelImporter::ImportAsset()
 
 	asset->model = Model::LoadModel(importPath, settings);
 
-	Prefab* prefab = new Prefab(asset->model->LoadEntityPrefab(importPath, asset->model));
+	Prefab* prefab = new Prefab(asset->model->LoadEntityPrefab(importPath, asset->model, DefaultShader));
 
 	asset->prefab = prefab;
 
-	for (AssetPostprocessor* processor : AssetPostprocessor::processors)
-	{
-		processor->OnPostprocessModel(asset);
-	}
+	asset->prefab->GetEntity()->transform->scale = { GlobalScale,GlobalScale,GlobalScale };
+
 	return asset;
+}
+
+ScriptAsset* ScriptImporter::ImportAsset()
+{
+	ScriptAsset* script = new ScriptAsset;
+
+
+
+	return script;
+}
+
+AnimationAsset* AnimationImporter::ImportAsset()
+{
+	AnimationAsset* asset = new AnimationAsset;
+
+	asset->animation = new Animation(importPath);
+
+	return asset;
+}
+
+MaterialAsset* MaterialImporter::ImportAsset()
+{
+	MaterialAsset* asset = new MaterialAsset;
+
+	Material* material = new Material;
+
+	material->LoadFromData(Filesystem::ReadFileString(importPath));
+
+	asset->material = material;
+
+	return asset;
+
 }

@@ -87,11 +87,13 @@ struct AURORA_API Material
 
     void Update();
 
+    string path;
+
     Entity* entity;
 
     struct AURORA_API UniformData
     {
-        GLenum type;
+        ShaderFactory::PropertyType type;
         union
         {
             bool b;
@@ -108,17 +110,26 @@ struct AURORA_API Material
 
     std::map<std::string, UniformData> uniforms;
 
+    map<string, ShaderFactory::Property*> properties;
+
     UniformData* GetUniform(std::string name)
     {
-	    for (std::pair<std::string, UniformData> uniform : uniforms)
-	    {
-		    if (uniform.first == name)
-		    {
-                return &uniform.second;
-                break;
-		    }
-	    }
+
+        if (uniforms.find(name) != uniforms.end())
+            return &uniforms[name];
+
         return nullptr;
+    }
+
+    void SetUniform(string name, UniformData data)
+    {
+
+        if (uniforms.find(name) != uniforms.end()) {
+            uniforms[name] = data;
+            return;
+        }
+
+        uniforms.insert({ name, data });
     }
 
     void ProcessUniforms()
@@ -144,45 +155,86 @@ struct AURORA_API Material
             //printf("Uniform #%d Type: %u Name: %s\n", i, type, name);
 
             UniformData dat = UniformData();
-            dat.type = type;
+            //dat.type = type;
             dat.m4 = mat4(0.0);
             dat.v4 = vec4{ 0 };
 
-            /*
+            
             switch (type) {
             case GL_BOOL:
-                std::cout << name << " is bool";
+                dat.type = ShaderFactory::Bool;
                 break;
             case GL_INT:
-                std::cout << name << " is int";
+                dat.type = ShaderFactory::Int;
                 break;
             case GL_FLOAT:
-                std::cout << name << " is float";
+                dat.type = ShaderFactory::Float;
                 break;
             case GL_FLOAT_VEC2:
-                std::cout << name << " is vec2";
+                dat.type = ShaderFactory::Vector2;
                 break;
             case GL_FLOAT_VEC3:
-                std::cout << name << " is vec3";
+                dat.type = ShaderFactory::Vector3;
                 break;
             case GL_FLOAT_VEC4:
-                std::cout << name << " is vec4";
+                dat.type = ShaderFactory::Vector4;
                 break;
             case GL_FLOAT_MAT2:
-                std::cout << name << " is mat2";
+                dat.type = ShaderFactory::Mat2;
                 break;
             case GL_FLOAT_MAT3:
-                std::cout << name << " is mat3";
+                dat.type = ShaderFactory::Mat3;
                 break;
             case GL_FLOAT_MAT4:
-                std::cout << name << " is mat4";
+                dat.type = ShaderFactory::Mat4;
                 break;
             }
-            */
+            
 
             //std::cout << std::endl;
 
             uniforms.insert({ name, dat });
+        }
+
+        int ctr = 0;
+
+        for (pair<const string, UniformData> uniform : uniforms)
+        {
+
+            UniformData nuniform = uniform.second;
+            string new_name = uniform.first;
+
+	        if (new_name == "alpha")
+	        {
+                nuniform.f = 1;
+	        }
+            if (new_name.find("_color") != string::npos)
+            {
+                nuniform.type = ShaderFactory::Color;
+                nuniform.v4 = { 1,1,1,1 };
+            }
+
+            uniforms[new_name] = nuniform;
+
+            ctr++;
+        }
+
+        if (shader->isFactoryShader)
+        {
+            //uniforms.clear();
+
+            for (auto property : shader->properties)
+            {
+                UniformData nuniform;
+
+                nuniform.type = property.second->GetType();
+
+                nuniform.v4 = property.second->defaultValue4;
+
+                uniforms[property.first] = nuniform;
+
+            }
+
         }
 
     }
@@ -194,6 +246,9 @@ struct AURORA_API Material
     }
 
 	Shader* shader;
+
+    void LoadFromData(string s);
+    string Export();
 };
 
 struct AURORA_API Mesh
@@ -213,7 +268,7 @@ struct AURORA_API Mesh
 
 	MeshData* data;
 
-	void Draw();
+	void Draw(bool instanced, int amount=0);
 
 	static Mesh* Upload(MeshData* data);
     static Mesh* Load(std::string path, int meshIndex);
@@ -283,7 +338,7 @@ struct AURORA_API Model
 
     static Entity* Load(string path);
 
-	static Entity* LoadEntityPrefab(string path, Model* m);
+	static Entity* LoadEntityPrefab(string path, Model* m, Shader* defShader=nullptr);
 
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene)
     {

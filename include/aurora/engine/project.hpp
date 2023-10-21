@@ -24,12 +24,15 @@ struct AURORA_API Project
 
     AssetProcessor* processor;
 
+    string GetAssetPath() { return assetPath; }
+
 private:
     friend Scene;
 
     Project(string path);
 
     std::string save_path;
+    string assetPath;
 
     std::vector<Scene*> scenes;
     Scene* loaded_scene;

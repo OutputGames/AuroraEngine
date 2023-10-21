@@ -61,6 +61,8 @@ using namespace nlohmann;
 #define AURORA_API __declspec(dllimport)
 #endif
 
+#define JSON_INDENT_AMOUNT 4
+
 
 GLFWwindow* GetWindow();
 

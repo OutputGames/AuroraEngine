@@ -22619,7 +22619,7 @@ This function implements a user-defined to_string  for JSON objects.
 NLOHMANN_BASIC_JSON_TPL_DECLARATION
 std::string to_string(const NLOHMANN_BASIC_JSON_TPL& j)
 {
-    return j.dump();
+    return j.dump(JSON_INDENT_AMOUNT);
 }
 } // namespace nlohmann
 

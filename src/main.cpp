@@ -2,6 +2,7 @@
 
 #include "aurora/aurora.hpp"
 #include "engine/assets/processor.hpp"
+#include "utils/timer.hpp"
 
 int main() {
 
@@ -9,9 +10,10 @@ int main() {
 
     
 
+    //Project::Create("C:/Users/chris/Downloads/testproj");
+        
     while (!RenderMgr::CheckCloseWindow()) {
         if (Project::ProjectLoaded()) {
-            Project::GetProject()->processor->CheckForEdits();
             if (Scene::GetScene()->runtimePlaying) {
                 Scene::GetScene()->OnRuntimeUpdate();
             } else

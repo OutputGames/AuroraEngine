@@ -1,14 +1,70 @@
 #ifndef SHADER_HPP
 #define SHADER_HPP
 
+#include "utils/filesystem.hpp"
 #include "utils/utils.hpp"
+
+class Shader;
+
+struct ShaderFactory {
+    struct ShaderData {
+        string vertexCode, fragmentCode;
+    };
+
+    enum PropertyType
+    {
+	    Float=0,
+        Int,
+        Bool,
+        Vector2,
+        Vector3,
+        Vector4,
+        Color,
+        Texture2D,
+        TextureCubemap,
+        Mat2,
+        Mat3,
+        Mat4
+    };
+
+    AURORA_API static PropertyType GetTypeFromName(string n);
+
+    struct Property
+    {
+        string name;
+
+    	PropertyType GetType() { return GetTypeFromName(type); };
+
+        union
+        {
+            float defaultValueF;
+            int defaultValueI;
+            bool defaultValueB;
+
+            vec2 defaultValue2;
+            vec3 defaultValue3;
+            vec4 defaultValue4;
+        };
+
+        void GetRealValueFromDefault(string def);
+
+        virtual ~Property() {};
+        string type;
+    };
+
+    static ShaderData* LoadData(json j);
+
+};
 
 class Shader
 {
 public:
     unsigned int ID;
     std::string shaderDirectory, name;
-    bool useGeometry;
+    bool useGeometry, isFactoryShader=false;
+
+    map<string, string> tags;
+    map<string, ShaderFactory::Property*> properties;
 
     static unordered_map<string, Shader*> loadedShaders;
 
@@ -16,6 +72,8 @@ public:
     // ------------------------------------------------------------------------
     Shader(std::string shaderDirectory, bool useGeometry = false, bool logShader=true)
     {
+
+        std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
 
         string shaderDir = filesystem::path(shaderDirectory).string();
 
@@ -44,12 +102,16 @@ public:
         }
     }
 
+    Shader(const char* path, bool overwrite);
+
     static Shader* CheckIfExists(string shaderDirectory)
     {
+        std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
+
         string shaderDir = filesystem::path(shaderDirectory).string();
 
         if (!loadedShaders.count(shaderDir)) {
-            return new Shader(shaderDirectory);
+            return new Shader(shaderDir);
         }
         else
         {
@@ -125,9 +187,15 @@ public:
 	    }
     }
 
+    static string CreateShader();
+
     void reload()
     {
-        cout << "Loading shader: " + shaderDirectory << endl;
+
+        if (isFactoryShader)
+            return;
+
+        cout << "Loading shader: " + name << endl;
         // 1. retrieve the vertex/fragment source code from filePath
         std::string vertexCode;
         std::string fragmentCode;

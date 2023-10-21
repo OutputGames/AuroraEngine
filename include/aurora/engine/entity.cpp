@@ -69,7 +69,11 @@ void Transform::CopyTransforms(mat4 matrix, bool isGlobal)
 
 vec3 Transform::GetEulerAngles()
 {
-    return glm::eulerAngles(rotation);
+    vec3 rot;
+
+    rot = eulerAngles(rotation);
+
+    return rot;
 }
 
 vec3 Transform::GetAbsolutePosition()
@@ -134,15 +138,34 @@ void Transform::Reset()
 void Transform::Delete()
 {
     if (parent) {
+        for (shared_ptr<Transform> transform : parent->children)
+        {
+	        if (transform->index > index)
+	        {
+                transform->index -= 1;
+	        }
+        }
 
-        parent->children.erase(parent->children.begin() + index);
+        //cout << "removed " << entity->name << " as child to " << parent->entity->name << endl;
+
+        parent = nullptr;
+    } else
+    {
+        //cout << entity->name << ": deleting with no parent" << endl;
     }
 
     for (int i = 0; i < children.size(); ++i)
     {
         shared_ptr<Transform> t = children[i];
+
+        //cout << "removing child " << t->entity->name << " id: " << i << " from " << entity->name << endl;
+
+        t->parent = this;
         t->entity->Delete();
+        t->parent = nullptr;
     }
+
+    children.clear();
 }
 
 void Transform::Update()
@@ -150,7 +173,8 @@ void Transform::Update()
     for (shared_ptr<Transform> entity : children)
     {
         if (entity->entity != nullptr) {
-            entity->entity->transform = entity.get();
+            //entity->entity->transform = entity.get();
+            entity->parent = this;
             if (entity->entity->enabled) {
                 entity->entity->Update();
             }
@@ -211,6 +235,10 @@ void Entity::Delete()
     }
     if (transform) {
         transform->Delete();
+    } else
+    {
+        cout << name << " has no transform?" << endl;
+        assert((transform == nullptr));
     }
 
    Scene::GetScene()->entity_mgr->RemoveEntity(this);
@@ -402,7 +430,7 @@ void Entity::LoadData(string data)
 
     for (auto child : children)
     {
-        string childData = child.dump();
+        string childData = child.dump(JSON_INDENT_AMOUNT);
 
         Entity* childEntity = Load(childData);
 
@@ -425,25 +453,7 @@ void Entity::LoadData(string data)
 
     e->enabled = ej["enabled"];
 
-    e->material->LoadShader(Shader::CheckIfExists(ej["material"]["shader"]));
-
-    auto unifs = ej["material"]["uniforms"].get<json::object_t>();
-
-    for (auto unif : unifs)
-    {
-        if (e->material->uniforms.count(unif.first))
-        {
-            Material::UniformData ud = e->material->uniforms[unif.first];
-            ud.type = unif.second["type"];
-            ud.b = unif.second["b"];
-            ud.i = unif.second["i"];
-            ud.f = unif.second["f"];
-            ud.v2 = { unif.second["v2"][0],unif.second["v2"][1] };
-            ud.v3 = { unif.second["v3"][0],unif.second["v3"][1],unif.second["v3"][2] };
-            ud.v4 = { unif.second["v4"][0],unif.second["v4"][1],unif.second["v4"][2],unif.second["v4"][3] };
-            e->material->uniforms[unif.first] = ud;
-        }
-    }
+    e->material->LoadFromData(ej["material"].dump(JSON_INDENT_AMOUNT));
 }
 
 void Entity::Update()
@@ -501,20 +511,20 @@ Entity *Scene::EntityMgr::CreateEntity(std::string name)
 void Scene::EntityMgr::RemoveEntity(Entity* entity)
 {
 
-    int id = entity->id;
+    uint32_t id = entity->id;
 
-    for (auto const& entity : entities)
+    for (auto const& nentity : entities)
     {
-        if (entity->id > id)
+        if (nentity->id > id)
         {
-            entity->id -= 1;
+            nentity->id -= 1;
         }
     }
 
     entities.erase(entities.begin() + id);
 }
 
-Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity)
+Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity, Entity* parent)
 {
     Entity* new_entity = CreateEntity(entity->name);
 
@@ -523,13 +533,15 @@ Entity* Scene::EntityMgr::DuplicateEntity(Entity* entity)
 
     new_entity->transform->rotation = entity->transform->rotation;
 
+    if (parent) {
+        new_entity->SetParent(parent);
+    }
+
     int ctr = 0;
     for (auto const& child : entity->transform->children)
     {
         auto const& new_child = make_shared<Transform>(*child);
-        new_child->entity = DuplicateEntity(child->entity);
-        new_child->parent = new_entity->transform;
-            new_entity->transform->children.emplace_back(new_child);
+        new_child->entity = DuplicateEntity(child->entity, new_entity);
     }
 
     for (auto const& component : entity->components)
@@ -691,7 +703,7 @@ string Scene::ToString()
     j["entities"] = entities;
     j["path"] = path;
 
-    return j.dump();
+    return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void Scene::LoadScene(string sc)
@@ -717,6 +729,7 @@ void Scene::LoadScene(string sc)
 
 void Scene::OnUpdate()
 {
+
     entity_mgr->Update();
 }
 
@@ -724,7 +737,7 @@ std::string Scene::SaveScene()
 {
 
 
-    std::string projFilePath = "resources/scenes/" + name + ".auscene";
+    std::string projFilePath = "Assets/Scenes/" + name + ".auscene";
     std::ofstream projFile(projFilePath, std::ofstream::out | std::ofstream::trunc);
 
     string data = ToString();
@@ -793,10 +806,34 @@ Scene* Scene::LoadScene(std::string sc, bool in)
     return s;
 }
 
+Scene* Scene::LoadScenePath(string path)
+{
+    string data = Filesystem::ReadFileString(path);
+
+    json scene = json::parse(data);
+
+    Scene* s = new Scene;
+    s->name = scene["name"];
+
+    s->light_mgr->sky = nullptr;
+
+    s->path = scene["path"];
+
+    for (auto ej : scene["entities"])
+    {
+        Entity* e = s->entity_mgr->CreateEntity(ej["name"]);
+
+        e->LoadData(ej.dump());
+
+    }
+
+    return s;
+}
+
 Scene* Scene::CreateScene(std::string s)
 {
-    if (!std::filesystem::is_directory("resources/scenes/") || !std::filesystem::exists("resources/scenes/")) { // Check if src folder exists
-        std::filesystem::create_directory("resources/scenes/"); // create src folder
+    if (!std::filesystem::is_directory("Assets/Scenes/") || !std::filesystem::exists("Assets/Scenes/")) { // Check if src folder exists
+        std::filesystem::create_directory("Assets/Scenes/"); // create src folder
     }
 
     Scene* scene = new Scene;
@@ -807,7 +844,7 @@ Scene* Scene::CreateScene(std::string s)
 
         Skybox* sb = entity->AttachComponent<Skybox>();
 
-        sb->LoadTexture("editor/textures/newport_loft.hdr");
+        sb->LoadTexture("Assets/Editor/textures/newport_loft.hdr");
 
         entity->Init();
 
@@ -830,7 +867,7 @@ Scene* Scene::CreateScene(std::string s)
         scene->light_mgr->lights.push_back(light);
     }
 
-    std::string projFilePath =  "resources/scenes/" + s + ".auscene";
+    std::string projFilePath =  "Assets/Scenes/" + s + ".auscene";
 
     std::ofstream projFile(projFilePath);
 
@@ -838,7 +875,7 @@ Scene* Scene::CreateScene(std::string s)
 
     projJSON["name"] = s;
 
-    projFile << projJSON.dump();
+    projFile << projJSON.dump(JSON_INDENT_AMOUNT);
 
     projFile.close();
 

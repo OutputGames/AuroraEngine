@@ -6,6 +6,7 @@
 #include "utils/filesystem.hpp"
 
 #include "graphics/lighting.hpp"
+#include "utils/timer.hpp"
 
 using namespace nlohmann;
 
@@ -13,29 +14,27 @@ static Project* current_project;
 
 void Project::Save()
 {
-	json j;
-	j["name"] = name;
+	if (current_project) {
+		json j;
+		j["Name"] = name;
 
-	json jscenes;
+		for (Scene* scene : scenes)
+		{
+			scene->SaveScene();
+		}
 
-	for (Scene* scene : scenes)
-	{
-		jscenes[scene->name] = json::parse(scene->SaveScene());
+		j["LoadedScene"] = loaded_scene->path;
+
+		std::string projFilePath = name + ".auproject";
+
+		std::ofstream projFile(projFilePath, std::ofstream::out | std::ofstream::trunc);
+
+		projFile << j.dump(JSON_INDENT_AMOUNT);
+
+		projFile.close();
+
+		std::cout << "Saved project sucessfully." << std::endl;
 	}
-
-	j["scenes"] = jscenes;
-
-	j["loadedScene"] = loaded_scene->name;
-
-	std::string projFilePath = name + ".auproject";
-
-	std::ofstream projFile(projFilePath, std::ofstream::out | std::ofstream::trunc);
-
-	projFile << j.dump();
-
-	projFile.close();
-
-	std::cout << "Saved project sucessfully." << std::endl;
 }
 
 Project* Project::Load(std::string path)
@@ -45,8 +44,10 @@ Project* Project::Load(std::string path)
 
 	std::filesystem::path projPath = std::filesystem::path(path);
 
+	p->assetPath = projPath.string() + "/Assets/";
 
-	Filesystem::CopyRecursive("resources/", path + "/editor/");
+
+	Filesystem::CopyRecursive("resources/", path + "/Assets/Editor/");
 
 	std::filesystem::current_path(projPath);
 
@@ -58,13 +59,9 @@ Project* Project::Load(std::string path)
 	
 	current_project = p;
 
-	p->name = j["name"];
-	for (json scene : j["scenes"])
-	{
-		Scene* s = Scene::LoadScene(scene.dump(), true);
-	}
+	p->name = j["Name"];
 
-	p->LoadScene(j["loadedScene"]);
+	p->LoadScenePath(j["LoadedScene"]);
 
 	p->Init();
 
@@ -83,9 +80,11 @@ Project* Project::Create(std::string path, std::string name)
 
 	std::filesystem::path projPath = std::filesystem::path(path);
 
-	std::filesystem::create_directory(projPath.string() + "/resources/");
+	std::filesystem::create_directory(projPath.string() + "/Assets/");
 
 	Project* proj = new Project(path);
+
+	proj->assetPath = projPath.string() + "/Assets/";
 
 	if (name == "")
 	{
@@ -98,19 +97,11 @@ Project* Project::Create(std::string path, std::string name)
 
 	nlohmann::json projJSON;
 
-	projJSON["name"] = name;
+	projJSON["Name"] = name;
 
-	json scenesJSON;
+	projJSON["LoadedScene"] = "Scenes/Main.auscene";
 
-	{
-		json scene;
-
-		scenesJSON["Main"] = scene;
-	}
-
-	projJSON["scenes"] = scenesJSON;
-
-	projFile << projJSON.dump();
+	projFile << projJSON.dump(JSON_INDENT_AMOUNT);
 
 	projFile.close();
 
@@ -127,10 +118,19 @@ Project* Project::Create(std::string path, std::string name)
 	return proj;
 }
 
+void ProcessEdits()
+{
+	Project::GetProject()->processor->CheckForEdits();
+
+	Timer* timer = new Timer(10, ProcessEdits);
+}
+
+
 void Project::Init()
 {
 	processor = new AssetProcessor;
-	processor->Init(save_path + "/resources/");
+	processor->Init(assetPath);
+
 }
 
 Project* Project::GetProject()
@@ -155,23 +155,11 @@ void Project::LoadScene(std::string name)
 
 void Project::LoadScenePath(std::string p)
 {
-	Scene* s = nullptr;
-	std::filesystem::path pth(p);
+	Scene* s = Scene::LoadScenePath(p);
+
+	scenes.push_back(s);
 
 
-	int idx = 0;
-	for (Scene* value : scenes)
-	{
-		if (value->name == pth.stem().string())
-		{
-			s = value;
-			break;
-		}
-		idx++;
-	}
-
-	//delete scenes[idx];
-	scenes[idx] = Scene::LoadScene(Filesystem::ReadFileString(p), false);
 
 	loaded_scene = s;
 }
@@ -184,7 +172,7 @@ bool Project::ProjectLoaded()
 Project::Project(string path)
 {
 
-	Filesystem::CopyRecursive("resources/", path + "/editor/");
+	Filesystem::CopyRecursive("resources/", path + "/Assets/Editor/");
 
 	std::filesystem::current_path(path);
 

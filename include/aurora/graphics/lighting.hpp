@@ -34,14 +34,18 @@ public:
     std::string PrintToJSON() override;
     void LoadFromJSON(json data) override;
 
-    void CalcShadowMap();
+    void CalcShadowMap(int prebuffer);
 
 private:
     friend LightingMgr;
 
     unsigned int shadowMap;
     unsigned int depthMapFBO;
+    unsigned int matricesUBO;
 
+    float near_plane = 0.01f, far_plane = 10000.0f;
+
+    vector<mat4> spaceMatrices;
     mat4 spaceMatrix;
 };
 

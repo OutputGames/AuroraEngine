@@ -10,8 +10,9 @@ struct AURORA_API RenderData
 {
     Mesh* mesh;
     mat4 matrix = mat4(1.0);
-    bool castShadow = false, useDepthMask=true, cullBack=false, deferred=true;
+    bool castShadow = false, useDepthMask=true, cullBack=false, deferred=true, instanced=false;
     Material* material;
+    int instances;
 }; 
 
 struct AURORA_API RenderMgr {

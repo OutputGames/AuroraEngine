@@ -13,17 +13,18 @@ project "AuroraRuntime"
    defines {"GRAPHICS_OPENGL", 'MONO_HOME="C:/Program Files/Mono/"'}
 
    files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp" }
-   --removefiles {"include/bullet3/**"}
+   removefiles {"vendor/**"}
    --files {"include/bullet3/src/**.hpp", "include/bullet3/src/**.h"}
 
 
 
    files {"resources\\**", "**.json", "lib\\**"}
 
-   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet", "C:/Program Files/Mono/include/mono-2.0"}
+   includedirs {"include\\", "include\\aurora\\", "vcpkg\\installed\\x64-windows\\include\\", "vcpkg\\installed\\x64-windows\\include\\bullet", "C:/Program Files/Mono/include/mono-2.0", "C:/physx/include"}
 
    links {
-        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib","mono-2.0-sgen.lib"
+        "glfw3_mt.lib","glew32.dll","glew32.lib","opengl32.lib","OpenAL32.lib","freetype.lib","assimp-vc143-mt.lib","mono-2.0-sgen.lib",
+    
     }
 
     --filter { 'system:windows' }
@@ -57,10 +58,12 @@ project "AuroraRuntime"
         debugdir "./"
         staticruntime "off"
         runtime "Debug"
+        libdirs {"C:/physx/bin/win.x86_64.vc143.mt/debug/"}
 
    filter "configurations:Release"
         defines { "NDEBUG" }
         optimize "On"
         staticruntime "off"
         runtime "Release" 
+        libdirs {"C:/physx/bin/win.x86_64.vc143.mt/release/"}
 --check_imgui()

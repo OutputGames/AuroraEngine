@@ -30,15 +30,16 @@ void PointLight::Init()
 	if (!entity->GetComponent<Billboard>()) {
 		Billboard* billboard = entity->AttachComponent<Billboard>();
 
-		billboard->texture = Texture::Load("editor/icons/svgs/solid/lightbulb.png", false);
+		billboard->texture = Texture::Load("Assets/Editor/icons/svgs/solid/lightbulb.png", false);
 
 		billboard->Init();
 	} else
 	{
 		Billboard* billboard = entity->GetComponent<Billboard>();
 
-		billboard->texture = Texture::Load("editor/icons/svgs/solid/lightbulb.png", false);
+		billboard->texture = Texture::Load("Assets/Editor/icons/svgs/solid/lightbulb.png", false);
 	}
+
 }
 
 void PointLight::Update()
@@ -85,7 +86,7 @@ std::string PointLight::PrintToJSON()
 	j["power"] = power;
 	j["id"] = id;
 
-	return j.dump();
+	return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void PointLight::LoadFromJSON(nlohmann::json data)
@@ -101,59 +102,203 @@ void PointLight::LoadFromJSON(nlohmann::json data)
 
 Shader* simpleDepthShader = nullptr;
 
-void PointLight::CalcShadowMap()
+std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& projview)
 {
-	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	const auto inv = glm::inverse(projview);
 
+	std::vector<glm::vec4> frustumCorners;
+	for (unsigned int x = 0; x < 2; ++x)
+	{
+		for (unsigned int y = 0; y < 2; ++y)
+		{
+			for (unsigned int z = 0; z < 2; ++z)
+			{
+				const glm::vec4 pt = inv * glm::vec4(2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f);
+				frustumCorners.push_back(pt / pt.w);
+			}
+		}
+	}
+
+	return frustumCorners;
+}
+
+const unsigned int SHADOWMAP_RESOLUTION = 4096;
+
+
+std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view)
+{
+	return getFrustumCornersWorldSpace(proj * view);
+}
+
+glm::mat4 getLightSpaceMatrix(const float nearPlane, const float farPlane, mat4 view, vec3 lightDir)
+{
+	const auto proj = glm::perspective(
+		glm::radians(70.0f), (float)SHADOWMAP_RESOLUTION / (float)SHADOWMAP_RESOLUTION, nearPlane,
+		farPlane);
+	const auto corners = getFrustumCornersWorldSpace(proj, view);
+
+	glm::vec3 center = vec3{0};
+	for (const auto& v : corners)
+	{
+		center += glm::vec3(v);
+	}
+	center /= corners.size();
+
+	const auto lightView = glm::lookAt(center+lightDir, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+	float minX = std::numeric_limits<float>::max();
+	float maxX = std::numeric_limits<float>::lowest();
+	float minY = std::numeric_limits<float>::max();
+	float maxY = std::numeric_limits<float>::lowest();
+	float minZ = std::numeric_limits<float>::max();
+	float maxZ = std::numeric_limits<float>::lowest();
+	for (const auto& v : corners)
+	{
+		const auto trf = lightView * v;
+		minX = std::min(minX, trf.x);
+		maxX = std::max(maxX, trf.x);
+		minY = std::min(minY, trf.y);
+		maxY = std::max(maxY, trf.y);
+		minZ = std::min(minZ, trf.z);
+		maxZ = std::max(maxZ, trf.z);
+	}
+
+	// Tune this parameter according to the scene
+	constexpr float zMult = 10.0f;
+	if (minZ < 0)
+	{
+		minZ *= zMult;
+	}
+	else
+	{
+		minZ /= zMult;
+	}
+	if (maxZ < 0)
+	{
+		maxZ /= zMult;
+	}
+	else
+	{
+		maxZ *= zMult;
+	}
+
+	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+	return lightProjection * lightView;
+}
+
+vector<float> GetCascadeLevels(float cameraFarPlane)
+{
+	std::vector<float> shadowCascadeLevels{ cameraFarPlane / 50.0f, cameraFarPlane / 25.0f, cameraFarPlane / 10.0f, cameraFarPlane / 2.0f };
+	return shadowCascadeLevels;
+}
+
+std::vector<glm::mat4> getLightSpaceMatrices(float cameraFarPlane, float cameraNearPlane, mat4 v, vec3 d)
+{
+	vector<float> shadowCascadeLevels = GetCascadeLevels(cameraFarPlane);
+	std::vector<glm::mat4> ret;
+	for (size_t i = 0; i < shadowCascadeLevels.size() + 1; ++i)
+	{
+		if (i == 0)
+		{
+			ret.push_back(getLightSpaceMatrix(cameraNearPlane, shadowCascadeLevels[i],v,d));
+		}
+		else if (i < shadowCascadeLevels.size())
+		{
+			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], shadowCascadeLevels[i],v,d));
+		}
+		else
+		{
+			ret.push_back(getLightSpaceMatrix(shadowCascadeLevels[i - 1], cameraFarPlane,v,d));
+		}
+	}
+	return ret;
+}
+
+void PointLight::CalcShadowMap(int prebuffer)
+{
+	near_plane = 0.01f;
+	far_plane = 150.0f;
+
+	vector<float> shadowCascadeLevels = GetCascadeLevels(far_plane);
 	if (shadowMap == 0)
 	{
 		glGenFramebuffers(1, &depthMapFBO);
 		// create depth texture
 		unsigned int depthMap;
 		glGenTextures(1, &depthMap);
-		glBindTexture(GL_TEXTURE_2D, depthMap);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-		float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
-		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-		// attach depth texture as FBO's depth buffer
+		glBindTexture(GL_TEXTURE_2D_ARRAY, depthMap);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, int(shadowCascadeLevels.size()) + 1,
+			0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+		constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);
+
 		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthMap, 0);
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (status != GL_FRAMEBUFFER_COMPLETE)
+		{
+			std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!";
+			//throw 0;
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, prebuffer);
 
 		shadowMap = depthMap;
 	}
 
+	if (matricesUBO == 0)
+	{
+		glGenBuffers(1, &matricesUBO);
+		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
 	if (simpleDepthShader == nullptr)
 	{
-		simpleDepthShader = new Shader("editor/shaders/7");
+		simpleDepthShader = new Shader("Assets/Editor/shaders/7", true, true);
 	}
 
 
-
-	glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-	glClear(GL_DEPTH_BUFFER_BIT);
-
 	glm::mat4 lightProjection, lightView;
-	float near_plane = 1.0f, far_plane = 75.0f;
-	//lightProjection = glm::perspective(glm::radians(70.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
-	lightProjection = glm::ortho(-100.0f, 100.0f, -100.0f, 100.0f, near_plane, far_plane);
+	lightProjection = glm::perspective(glm::radians(70.0f), (GLfloat)SHADOWMAP_RESOLUTION / (GLfloat)SHADOWMAP_RESOLUTION, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
+	//lightProjection = glm::ortho(-100.0f, 100.0f, -100.0f, 100.0f, near_plane, far_plane);
+
 	lightView = glm::lookAt(entity->transform->position, vec3{ 0 }, glm::vec3(0.0, 1.0, 0.0));
-	spaceMatrix = lightProjection * lightView;
+
+	const auto lightMatrices = getLightSpaceMatrices(far_plane, near_plane, lightView, entity->transform->position);
+	glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
+	for (size_t i = 0; i < lightMatrices.size(); ++i)
+	{
+		glBufferSubData(GL_UNIFORM_BUFFER, i * sizeof(glm::mat4x4), sizeof(glm::mat4x4), &lightMatrices[i]);
+	}
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	spaceMatrices = lightMatrices;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+	glViewport(0, 0, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, shadowMap, 0);
+	glClear(GL_DEPTH_BUFFER_BIT);
 
 	//simpleDepthShader->reload();
 	simpleDepthShader->use();
-	simpleDepthShader->setMat4("lightSpaceMatrix", spaceMatrix);
+	//simpleDepthShader->setMat4("lightSpaceMatrix", spaceMatrix);
 	simpleDepthShader->setFloat("near_plane", near_plane);
 	simpleDepthShader->setFloat("far_plane", far_plane);
 
-	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
 
 	for (RenderData* render_obj : RenderMgr::renderObjs)
 	{
@@ -163,23 +308,22 @@ void PointLight::CalcShadowMap()
 
 			simpleDepthShader->setMat4("model", render_obj->matrix);
 
-			glCullFace(GL_FRONT);
-
-			render_obj->mesh->Draw();
+			render_obj->mesh->Draw(render_obj->instanced, render_obj->instances);
 		}
 	}
 
-	glDisable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, prebuffer);
+	glViewport(0, 0, RenderMgr::GetSceneWinSize().x, RenderMgr::GetSceneWinSize().y);
 }
 
 void Skybox::Init()
 {
 	if (skyboxMesh == nullptr)
 	{
-		skyboxMesh = Mesh::Load("editor/models/cube.fbx", 0);
-		entity->material->LoadShader(new Shader("editor/shaders/1/"));
+		skyboxMesh = Mesh::Load("Assets/Editor/models/cube.fbx", 0);
+		entity->material->LoadShader(new Shader("Assets/Editor/shaders/1/"));
 	}
 
 	if (Scene::GetScene()) {
@@ -365,7 +509,7 @@ void Skybox::LoadTexture(std::string path)
 		glGenRenderbuffers(1, &captureRBO);
 	}
 
-	Shader equirectangularToCubemapShader("editor/shaders/6/", false, false);
+	Shader equirectangularToCubemapShader("Assets/Editor/shaders/6/", false, false);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
 	glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
@@ -460,8 +604,8 @@ void Skybox::LoadTexture(std::string path)
 
 	cubemap_texture = texture;
 
-	Shader irradianceShader("editor/shaders/4/", false, false);
-	Shader prefilterShader("editor/shaders/5/", false, false);
+	Shader irradianceShader("Assets/Editor/shaders/4/", false, false);
+	Shader prefilterShader("Assets/Editor/shaders/5/", false, false);
 
 	// pbr: create an irradiance cubemap, and re-scale capture FBO to irradiance scale.
 	glGenTextures(1, &irradianceMap);
@@ -556,7 +700,7 @@ std::string Skybox::PrintToJSON()
 
 	j["texture_path"] = cubemap_texture.path;
 
-	return j.dump();
+	return j.dump(JSON_INDENT_AMOUNT);
 }
 
 void Skybox::LoadFromJSON(json data)
@@ -577,7 +721,7 @@ void LightingMgr::EditMaterial(Material* material)
 	{
 		glGenTextures(1, &brdfLUTTexture);
 
-		Shader brdfShader("editor/shaders/3", false, false);
+		Shader brdfShader("Assets/Editor/shaders/3", false, false);
 
 		// pre-allocate enough memory for the LUT texture.
 		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
@@ -687,7 +831,7 @@ void LightingMgr::EditMaterial(Material* material)
 			material->entity->material->uniforms[(light_un + ".enabled")].b = light->enabled;
 			material->entity->material->uniforms[(light_un + ".power")].f = light->power;
 
-			material->entity->material->uniforms[(light_un + ".lightSpaceMatrix")].m4 = light->spaceMatrix;
+			material->entity->material->uniforms[(light_un + ".lightSpaceMatrix")].m4 = light->spaceMatrices[0];
 
 			if (!hasShadowMap && light->shadowMap != 0)
 			{
@@ -794,7 +938,7 @@ unsigned LightingMgr::GetGeometryBuffer()
 			glGenTextures(1, &brdfLUTTexture);
 		}
 
-		Shader brdfShader("editor/shaders/3/", false, false);
+		Shader brdfShader("Assets/Editor/shaders/3/", false, false);
 
 		brdfShader.reload();
 
@@ -830,7 +974,7 @@ void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 vi
 
 	if (shaderLightingPass == nullptr)
 	{
-		shaderLightingPass = new Shader("editor/shaders/9/");
+		shaderLightingPass = new Shader("Assets/Editor/shaders/9/");
 	}
 
 	float time = glfwGetTime();
@@ -878,27 +1022,45 @@ void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 vi
 		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->cubemap_texture.ID);
 	}
 
+	int texCtr = 7;
+
 	int ctr = 0;
 	for (int i = 0; i < 10; i++)
 	{
 		std::string light_un = "lights[" + to_string(ctr) + "]";
 		if (i < lights.size()) {
 			PointLight* light = lights[i];
+
 			shaderLightingPass->setVec3(light_un + ".position", light->entity->transform->position);
 			shaderLightingPass->setVec3(light_un + ".direction", light->entity->transform->GetEulerAngles());
 			shaderLightingPass->setVec3(light_un + ".color", light->color);
 			shaderLightingPass->setBool(light_un + ".enabled", light->enabled);
 			shaderLightingPass->setFloat(light_un + ".power", light->power);
-			shaderLightingPass->setMat4(light_un + ".lightSpaceMatrix", light->spaceMatrix);
 
-			/*
-
-			if (!hasShadowMap && light->shadowMap != 0)
+			shaderLightingPass->setFloat("far_plane", light->far_plane);
+			shaderLightingPass->setFloat("near_plane", light->near_plane);
+			shaderLightingPass->setInt("cascadeCount", GetCascadeLevels(light->far_plane).size());
+			for (size_t i2 = 0; i2 < GetCascadeLevels(light->far_plane).size(); ++i2)
 			{
-				Texture t = { light->shadowMap, "texture_shad", false };
-				material->textures.push_back(t);
+				shaderLightingPass->setFloat("cascadePlaneDistances[" + std::to_string(i2) + "]", GetCascadeLevels(light->far_plane)[i2]);
 			}
-			*/
+
+			//shaderLightingPass->setMat4(light_un + ".lightSpaceMatrix", light->spaceMatrix);
+
+			
+
+			if (light->shadowMap != 0)
+			{
+				texCtr++;
+				shaderLightingPass->setInt("shadowMap", texCtr);
+
+				GLenum tex = GL_TEXTURE0 + texCtr;
+
+				glActiveTexture(tex);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, light->shadowMap);
+
+			}
+			
 		}
 		else
 		{

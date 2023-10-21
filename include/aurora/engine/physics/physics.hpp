@@ -15,6 +15,7 @@ struct PhysicsFactory
 private:
 
 	friend class RigidBody3D;
+	friend class StaticBody3D;
 
 };
 
@@ -34,7 +35,24 @@ public:
 	void Update() override;
 
 private:
+};
 
+class StaticBody3D : public Component
+{
+	CLASS_DECLARATION(StaticBody3D)
+
+public:
+	StaticBody3D(std::string&& initialValue) : Component(move(initialValue))
+	{
+	}
+
+	StaticBody3D() = default;
+
+	void Init() override;
+
+	void Update() override;
+
+private:
 };
 
 #endif // PHYSICS_HPP

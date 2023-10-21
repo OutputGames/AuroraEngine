@@ -36,6 +36,7 @@ TextEditor* text_editor;
 ImVec2 oldGS;
 
 bool renderUndeferred = true;
+bool checkedDelta = false;
 
 //uint32_t Entity::selected_id;
 
@@ -78,8 +79,8 @@ void RenderMgr::InitGraphicsDevice()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -143,7 +144,7 @@ void RenderMgr::InitGraphicsDevice()
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
+    ImGui_ImplOpenGL3_Init("#version 410");
 
     glEnable(GL_DEPTH_TEST);
 
@@ -177,6 +178,7 @@ void RenderMgr::UpdateGraphicsDevice()
             // input
     // -----
     processInput(window);
+    checkedDelta = false;
 
     //camera->Update();
 
@@ -224,12 +226,15 @@ void RenderMgr::UpdateGraphicsDevice()
 
 
     if (Project::ProjectLoaded()) {
+        int buf = Scene::GetScene()->light_mgr->GetGeometryBuffer();
+        glBindFramebuffer(GL_FRAMEBUFFER, buf);
+
         for (int i = 0; i < Scene::GetScene()->light_mgr->lights.size(); ++i)
         {
             PointLight* l = Scene::GetScene()->light_mgr->lights[i];
-            //l->CalcShadowMap();
+            l->CalcShadowMap(buf);
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, Scene::GetScene()->light_mgr->GetGeometryBuffer());
+
 
         //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -239,7 +244,7 @@ void RenderMgr::UpdateGraphicsDevice()
         bfr->Bind();
     }
 
-    //glViewport(0, 0, oldGS.x, oldGS.y);
+    glViewport(0, 0, oldGS.x, oldGS.y);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     for (RenderData* render_obj : renderObjs)
@@ -299,7 +304,7 @@ void RenderMgr::UpdateGraphicsDevice()
             //bfr->Bind();
         }
 
-        render_obj->mesh->Draw();
+        render_obj->mesh->Draw(render_obj->instanced, render_obj->instances);
 
         if (render_obj->useDepthMask == false) {
             glDepthMask(GL_TRUE);
@@ -382,7 +387,7 @@ void RenderMgr::UpdateGraphicsDevice()
                 //bfr->Bind();
             }
 
-            render_obj->mesh->Draw();
+            render_obj->mesh->Draw(render_obj->instanced, render_obj->instances);
 
             if (render_obj->useDepthMask == false) {
                 glDepthMask(GL_TRUE);
@@ -583,6 +588,70 @@ void RenderMgr::RenderEngineSpace()
     ImGuiID dockspace_id = ImGui::GetID("EngineDS");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
 
+
+    static std::filesystem::path assetdir = "";
+    static bool renamingFile = false;
+
+    static bool fdopen = false;
+    static ImVec2 mousePos;
+
+    if (Project::ProjectLoaded() && assetdir == "")
+    {
+        assetdir = Project::GetProject()->GetAssetPath();
+    }
+
+    std::function<void()> assetCreateMenu = []()
+    {
+
+
+            std::function<void(string, bool, Asset::AssetType type)> assetCreate = [](string path, bool i, Asset::AssetType type)
+                {
+                    filesystem::path p(path);
+
+                    if (i)
+                    {
+                        filesystem::create_directory(p);
+                    }
+                    else
+                    {
+                        AssetProcessor::CreateDefaultAsset(path, type);
+                    }
+
+                    selectedFile = true;
+                    selected_file = p;
+                    renamingFile = true;
+                    fdopen = false;
+					
+
+                    Project::GetProject()->processor->CheckForEdits();
+
+                };
+
+            if (assetdir != "") {
+                if (ImGui::Selectable("Folder")) { assetCreate(assetdir.string() + "/New Folder", true, Asset::FileAsset); }
+
+                ImGui::Separator();
+
+                if (ImGui::Selectable("C# Script")) { assetCreate(assetdir.string() + "/NewScript.cs", false, Asset::ScriptAsset); }
+
+                if (ImGui::BeginMenu("Shader")) {
+                    if (ImGui::Selectable("Standard Shader")) { assetCreate(assetdir.string() + "/NewShader.shader", false, Asset::ShaderAsset); }
+
+                    ImGui::EndMenu();
+                }
+
+                ImGui::Separator();
+
+                if (ImGui::Selectable("Scene")) { assetCreate(assetdir.string() + "/NewScene.auscene",false, Asset::FileAsset); }
+                if (ImGui::Selectable("Prefab")) { assetCreate(assetdir.string() + "/NewPrefab.prefab",false, Asset::PrefabAsset); }
+
+                ImGui::Separator();
+
+                if (ImGui::Selectable("Material")) {assetCreate(assetdir.string()+ "/NewMaterial.mat",false, Asset::MaterialAsset); }
+
+            }
+    };
+
         // If you copied this demo function into your own code and removed ImGuiWindowFlags_MenuBar at the top of the function,
     // you should remove the below if-statement as well.
         if (ImGui::BeginMenuBar())
@@ -666,9 +735,14 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cube");
 
                         MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                        renderer->mesh = Mesh::Load("editor/models/cube.fbx", 0);
-                        Shader* shader = new Shader("editor/shaders/0/");
+                        renderer->mesh = Mesh::Load("Assets/Editor/models/cube.fbx", 0);
+                        Shader* shader = new Shader("Assets/Editor/shaders/0/");
                         entity->SetShader(shader);
+
+                        //entity->AttachComponent<BoxCollider>();
+                        entity->AttachComponent<RigidBody3D>();
+
+                        entity->Init();
                     }
 
                     if (ImGui::Selectable(ICON_FA_CIRCLE " Sphere"))
@@ -676,9 +750,14 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Sphere");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/sphere.fbx", 0);
-                        Shader* shader = new Shader("editor/shaders/0/");
+                       renderer->mesh = Mesh::Load("Assets/Editor/models/sphere.fbx", 0);
+                        Shader* shader = new Shader("Assets/Editor/shaders/0/");
                         entity->SetShader(shader);
+
+                        //entity->AttachComponent<SphereCollider>();
+                        entity->AttachComponent<RigidBody3D>();
+
+                        entity->Init();
                     }
 
                     if (ImGui::Selectable("Cone"))
@@ -686,8 +765,8 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cone");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/cone.fbx", 0);
-                        Shader* shader = new Shader("editor/shaders/0/");
+                       renderer->mesh = Mesh::Load("Assets/Editor/models/cone.fbx", 0);
+                        Shader* shader = new Shader("Assets/Editor/shaders/0/");
                         entity->SetShader(shader);
                     }
 
@@ -696,8 +775,8 @@ void RenderMgr::RenderEngineSpace()
                         Entity* entity = currentScene->entity_mgr->CreateEntity("Cylinder");
 
                        MeshRenderer* renderer = entity->AttachComponent<MeshRenderer>();
-                       renderer->mesh = Mesh::Load("editor/models/cylinder.fbx", 0);
-                        Shader* shader = new Shader("editor/shaders/0/");
+                       renderer->mesh = Mesh::Load("Assets/Editor/models/cylinder.fbx", 0);
+                        Shader* shader = new Shader("Assets/Editor/shaders/0/");
                         entity->SetShader(shader);
                     }
 
@@ -724,7 +803,7 @@ void RenderMgr::RenderEngineSpace()
 
                         Skybox* sb = entity->AttachComponent<Skybox>();
 
-                        sb->LoadTexture("editor/textures/newport_loft.hdr");
+                        sb->LoadTexture("Assets/Editor/textures/newport_loft.hdr");
 
                         entity->Init();
 
@@ -733,6 +812,12 @@ void RenderMgr::RenderEngineSpace()
 
                     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+                    ImGui::EndMenu();
+                }
+
+                if (ImGui::BeginMenu("Create"))
+                {
+                    assetCreateMenu();
                     ImGui::EndMenu();
                 }
             }
@@ -919,9 +1004,11 @@ void RenderMgr::RenderEngineSpace()
                         currentScene->OnRuntimeUnload();
                 }
 
+                
+
                 if (ImGui::Button("Compile and Run Script"))
                 {
-                    //MonoRuntime::CompileScript("editor/scripts/Dog.cs");
+                    //MonoRuntime::CompileScript("Assets/Editor/scripts/Dog.cs");
                     //MonoRuntime::MonoAssemblyAurora* assembly = MonoRuntime::OpenAssembly("generated/Dog.dll");
                     //assembly->PrintTypes();
                     //MonoObject* instance = assembly->InstantiateClass(assembly->GetClass("", "Dog"));
@@ -935,6 +1022,8 @@ void RenderMgr::RenderEngineSpace()
                 {
 	                
                 }
+
+                
 
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s.c_str());
             //ImGui::TextColored(ImVec4(1, 0, 0, 1), s2.c_str());
@@ -1055,6 +1144,34 @@ void RenderMgr::RenderEngineSpace()
         ImGui::End();
         //ImGui::PopStyleVar();
 
+
+        if (ImGui::IsKeyPressed((ImGuiKey_Delete)))
+        {
+            if (Entity::selectedEntity) {
+                auto const& entity = currentScene->entity_mgr->entities[Entity::selected_id];
+                entity->Delete();
+                Entity::selectedEntity = false;
+            }
+            else if (selectedFile)
+            {
+                filesystem::remove(selected_file);
+                selectedFile = false;
+                Project::GetProject()->processor->CheckForEdits();
+            }
+        }
+
+        if (ImGui::IsKeyPressed((ImGuiKey_Escape)))
+        {
+            if (Entity::selectedEntity) {
+                Entity::selectedEntity = false;
+            }
+            else if (selectedFile)
+            {
+                selectedFile = false;
+            }
+        }
+
+
         ImGui::Begin(ICON_FA_LIST " Properties");
         {
             if (Entity::selectedEntity) {
@@ -1128,7 +1245,7 @@ void RenderMgr::RenderEngineSpace()
 
                 entity->RenderComponents();
 
-                if (currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()) {
+                if (true) {
 
 
                     if (ImGui::CollapsingHeader(ICON_FA_PAINTBRUSH " Material")) {
@@ -1136,153 +1253,247 @@ void RenderMgr::RenderEngineSpace()
                         if (entity->GetComponent<MeshRenderer>() && entity->GetComponent<MeshRenderer>()->mesh) {
 
                             Mesh* m = currentScene->entity_mgr->entities[Entity::selected_id]->GetComponent<MeshRenderer>()->mesh;
-
-                            Shader* os = entity->material->shader;
-                            Shader* s = entity->material->shader;
-
-                            string st = "none";
-
-                            if (s)
-                            {
-                                st = s->name;
-                            }
-
-                            if (ImGui::BeginCombo("Shader", st.c_str())) {
-
-                                for (pair<const string, Shader*> loaded_shader : Shader::loadedShaders)
-                                {
-                                    if (ImGui::Selectable(loaded_shader.first.c_str()))
-                                    {
-                                        s = loaded_shader.second;
-                                    }
-                                }
-
-                                ImGui::EndCombo();
-                            }
-
-                            ImGui::Separator();
-
-                            if (s)
-                            {
-                                if (s != os) {
-                                    entity->material->LoadShader(s);
-                                }
-                            }
-
-                            /*
-
-                            if (entity->material->uniforms.size() > 0) {
-
-                                if (entity->material->uniforms.count("albedo")) {
-
-                                    float albed[3] = {
-	                                    entity->material->entity->material->uniforms[("albedo")].v3.x,
-	                                    entity->material->entity->material->uniforms[("albedo")].v3.y,
-	                                    entity->material->entity->material->uniforms[("albedo")].v3.z
-                                    };
-
-                                    ImGui::ColorPicker3("Albedo", albed);
-
-                                    entity->material->entity->material->uniforms[("albedo")].v3 = { albed[0], albed[1], albed[2] };
-
-                                    
-                                    ImGui::SliderFloat("Roughness", &entity->material->entity->material->uniforms[("roughness")].f, 0, 1);
-                                    ImGui::SliderFloat("Metallic", &entity->material->entity->material->uniforms[("metallic")].f, 0, 1);
-                                    
-                                }
-                            }
-
-                            */
-
                             
+                        }
 
-                            for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
+
+                        Shader* os = entity->material->shader;
+                        Shader* s = entity->material->shader;
+
+                        string st = "none";
+
+                        if (s)
+                        {
+                            st = s->name;
+                        }
+
+                        if (ImGui::BeginCombo("Shader", st.c_str())) {
+
+                            for (pair<const string, Shader*> loaded_shader : Shader::loadedShaders)
                             {
-                                switch (uniform.second.type)
+                                if (ImGui::Selectable(loaded_shader.first.c_str()))
                                 {
-                                case GL_BOOL:
-                                    ImGui::Checkbox(uniform.first.c_str(), &uniform.second.b);
-                                    break;
-                                case GL_INT:
-                                    ImGui::DragInt(uniform.first.c_str(), &uniform.second.i);
-                                    break;
-                                case GL_FLOAT:
-                                    ImGui::DragFloat(uniform.first.c_str(), &uniform.second.f, 0.01);
-                                    break;
-                                case GL_FLOAT_VEC2:
-                                {
-                                    float v[2];
-
-                                    for (int i = 0; i < 2; ++i)
-                                    {
-                                        v[i] = uniform.second.v2[i];
-                                    }
-
-                                    ImGui::DragFloat2(uniform.first.c_str(), v);
-
-                                    for (int i = 0; i < 2; ++i)
-                                    {
-                                        uniform.second.v2[i] = v[i];
-                                    }
+                                    s = loaded_shader.second;
                                 }
-                                break;
-                                case GL_FLOAT_VEC3:
-                                {
-                                    float v[3];
-
-                                    for (int i = 0; i < 3; ++i)
-                                    {
-                                        v[i] = uniform.second.v3[i];
-                                    }
-
-                                    if (uniform.first.find("_color") != string::npos) {
-                                        ImGui::ColorEdit3(uniform.first.c_str(), v);
-                                    }
-                                    else {
-
-                                        ImGui::DragFloat3(uniform.first.c_str(), v);
-                                    }
-
-                                    for (int i = 0; i < 3; ++i)
-                                    {
-                                        uniform.second.v3[i] = v[i];
-                                    }
-                                }
-                                break;
-                                case GL_FLOAT_VEC4:
-                                {
-                                    float v[4];
-
-                                    for (int i = 0; i < 4; ++i)
-                                    {
-                                        v[i] = uniform.second.v4[i];
-                                    }
-
-                                    if (uniform.first.find("_color") != string::npos) {
-                                        ImGui::ColorEdit4(uniform.first.c_str(), v);
-                                    }
-                                    else {
-
-                                        ImGui::DragFloat4(uniform.first.c_str(), v);
-                                    }
-
-                                    for (int i = 0; i < 4; ++i)
-                                    {
-                                        uniform.second.v4[i] = v[i];
-                                    }
-                                }
-                                break;
-                                case GL_FLOAT_MAT2:
-                                    break;
-                                case GL_FLOAT_MAT3:
-                                    break;
-                                case GL_FLOAT_MAT4:
-                                    break;
-                                }
-
-                                entity->material->uniforms[uniform.first] = uniform.second;
                             }
-                            
+
+                            ImGui::EndCombo();
+                        }
+
+                        ImGui::Separator();
+
+                        if (s)
+                        {
+                            if (s != os) {
+                                entity->material->LoadShader(s);
+                            }
+                        }
+
+                        /*
+
+                        if (entity->material->uniforms.size() > 0) {
+
+                            if (entity->material->uniforms.count("albedo")) {
+
+                                float albed[3] = {
+                                    entity->material->entity->material->uniforms[("albedo")].v3.x,
+                                    entity->material->entity->material->uniforms[("albedo")].v3.y,
+                                    entity->material->entity->material->uniforms[("albedo")].v3.z
+                                };
+
+                                ImGui::ColorPicker3("Albedo", albed);
+
+                                entity->material->entity->material->uniforms[("albedo")].v3 = { albed[0], albed[1], albed[2] };
+
+
+                                ImGui::SliderFloat("Roughness", &entity->material->entity->material->uniforms[("roughness")].f, 0, 1);
+                                ImGui::SliderFloat("Metallic", &entity->material->entity->material->uniforms[("metallic")].f, 0, 1);
+
+                            }
+                        }
+
+                        */
+
+                        /*
+
+                        for (auto [propertyName, property] : entity->material->properties)
+                        {
+	                        switch (property->GetType())
+	                        {
+                            case ShaderFactory::Float:
+                            {
+                                ImGui::DragFloat(propertyName.c_str(), &property->defaultValueF, 0.01);
+                                break;
+                            }
+                            case ShaderFactory::Int:
+                            {
+                                ImGui::DragInt(propertyName.c_str(), &property->defaultValueI, 1);
+                                break;
+                            }
+                            case ShaderFactory::Bool:
+                            {
+                                ImGui::Checkbox(propertyName.c_str(), &property->defaultValueB);
+                                break;
+                            }
+                            case ShaderFactory::Vector2:
+                            {
+                                float v[2];
+
+                                for (int i = 0; i < 2; ++i)
+                                {
+                                    v[i] = property->defaultValue2[i];
+                                }
+
+                                ImGui::DragFloat2(propertyName.c_str(), v);
+
+                                for (int i = 0; i < 2; ++i)
+                                {
+                                    property->defaultValue2[i] = v[i];
+                                }
+                                break;
+                            }
+                            case ShaderFactory::Vector3:
+                            {
+                                float v[3];
+
+                                for (int i = 0; i < 3; ++i)
+                                {
+                                    v[i] = property->defaultValue3[i];
+                                }
+
+                                ImGui::DragFloat3(propertyName.c_str(), v);
+
+                                for (int i = 0; i < 3; ++i)
+                                {
+                                    property->defaultValue3[i] = v[i];
+                                }
+                                break;
+                            }
+                            case ShaderFactory::Vector4:
+                            {
+                                float v[4];
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    v[i] = property->defaultValue4[i];
+                                }
+
+                                ImGui::DragFloat4(propertyName.c_str(), v);
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    property->defaultValue4[i] = v[i];
+                                }
+                                break;
+                            }
+                            case ShaderFactory::Color:
+                                float v[4];
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    v[i] = property->defaultValue4[i];
+                                }
+
+                                ImGui::ColorEdit4(propertyName.c_str(), v);
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    property->defaultValue4[i] = v[i];
+                                }
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+
+*/
+
+                        
+
+                        for (pair<const string, Material::UniformData> uniform : entity->material->uniforms)
+                        {
+                            switch (uniform.second.type)
+                            {
+                            case ShaderFactory::Bool:
+                                ImGui::Checkbox(uniform.first.c_str(), &uniform.second.b);
+                                break;
+                            case ShaderFactory::Int:
+                                ImGui::DragInt(uniform.first.c_str(), &uniform.second.i);
+                                break;
+                            case ShaderFactory::Float:
+                                ImGui::DragFloat(uniform.first.c_str(), &uniform.second.f, 0.01);
+                                break;
+                            case ShaderFactory::Vector2:
+                            {
+                                float v[2];
+
+                                for (int i = 0; i < 2; ++i)
+                                {
+                                    v[i] = uniform.second.v2[i];
+                                }
+
+                                ImGui::DragFloat2(uniform.first.c_str(), v);
+
+                                for (int i = 0; i < 2; ++i)
+                                {
+                                    uniform.second.v2[i] = v[i];
+                                }
+                            }
+                            break;
+                            case ShaderFactory::Vector3:
+                            {
+                                float v[3];
+
+                                for (int i = 0; i < 3; ++i)
+                                {
+                                    v[i] = uniform.second.v3[i];
+                                }
+
+                                ImGui::DragFloat3(uniform.first.c_str(), v);
+
+                                for (int i = 0; i < 3; ++i)
+                                {
+                                    uniform.second.v3[i] = v[i];
+                                }
+                            }
+                            break;
+                            case ShaderFactory::Vector4:
+                            {
+                                float v[4];
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    v[i] = uniform.second.v4[i];
+                                }
+
+                                ImGui::DragFloat4(uniform.first.c_str(), v);
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    uniform.second.v4[i] = v[i];
+                                }
+                            }
+                            break;
+                            case ShaderFactory::Color:
+                                float v[4];
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    v[i] = uniform.second.v4[i];
+                                }
+
+                                ImGui::ColorEdit4(uniform.first.c_str(), v);
+
+                                for (int i = 0; i < 4; ++i)
+                                {
+                                    uniform.second.v4[i] = v[i];
+                                }
+                                break;
+                            default:
+                                break;
+                            }
+
+                            entity->material->uniforms[uniform.first] = uniform.second;
                         }
                     }
 
@@ -1328,6 +1539,7 @@ void RenderMgr::RenderEngineSpace()
                             if (selected)
                             {
                                 entity->AddComponent(cmp_map.first);
+                                acopen = false;
                                 break;
                             }
                         }
@@ -1342,18 +1554,6 @@ void RenderMgr::RenderEngineSpace()
                         acopen = false;
                     }
                 }
-
-                if (ImGui::IsKeyPressed((ImGuiKey_Delete)))
-                {
-                    entity->Delete();
-                    Entity::selectedEntity = false;
-                }
-
-                if (ImGui::IsKeyPressed((ImGuiKey_Escape)))
-                {
-                    Entity::selectedEntity = false;
-                }
-
                 if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_D))
                 {
                     auto const& clone = currentScene->entity_mgr->DuplicateEntity(entity.get());
@@ -1503,11 +1703,12 @@ void RenderMgr::RenderEngineSpace()
 
         ImGui::Begin(ICON_FA_FOLDER_OPEN " Asset Browser");
 
-        static std::filesystem::path assetdir = Filesystem::GetCurrentDir();
-
         if (ImGui::Button(ICON_FA_TURN_UP "###ab"))
         {
-            if (assetdir.string() != Filesystem::GetCurrentDir()) {
+
+            string assetPath = Project::GetProject()->GetAssetPath();
+
+            if (assetdir.parent_path() != Filesystem::GetCurrentDir()) {
                 assetdir = assetdir.parent_path();
             }
         }
@@ -1565,18 +1766,18 @@ void RenderMgr::RenderEngineSpace()
         ImGui::Columns(columnCount, 0, false);
 
         static std::map<std::string, Texture> fileIcons = {
-            {"Folder", Texture::Load("editor/icons/svgs/solid/folder.png", false)},
-            {"File", Texture::Load("editor/icons/svgs/solid/file.png", false)},
-            {"TextFile", Texture::Load("editor/icons/svgs/solid/file-lines.png", false)},
-            {"CodeFile", Texture::Load("editor/icons/svgs/solid/file-code.png", false)},
-            {"ConfigFile", Texture::Load("editor/icons/svgs/solid/gears.png", false)},
-            {"Executable", Texture::Load("editor/icons/svgs/solid/computer.png", false)},
-            {"Library", Texture::Load("editor/icons/svgs/solid/book.png", false)},
-            {"ModelFile", Texture::Load("editor/icons/svgs/solid/cubes.png", false)},
-            {"MeshFile", Texture::Load("editor/icons/svgs/solid/cube.png", false)},
-            {"SceneFile", Texture::Load("editor/icons/svgs/solid/earth-americas.png", false)},
-            {"ProjectFile", Texture::Load("editor/icons/svgs/solid/diagram-project.png", false)},
-            {"PrefabFile", Texture::Load("editor/icons/svgs/solid/person.png", false)},
+            {"Folder", Texture::Load("Assets/Editor/icons/svgs/solid/folder.png", false)},
+            {"File", Texture::Load("Assets/Editor/icons/svgs/solid/file.png", false)},
+            {"TextFile", Texture::Load("Assets/Editor/icons/svgs/solid/file-lines.png", false)},
+            {"CodeFile", Texture::Load("Assets/Editor/icons/svgs/solid/file-code.png", false)},
+            {"ConfigFile", Texture::Load("Assets/Editor/icons/svgs/solid/gears.png", false)},
+            {"Executable", Texture::Load("Assets/Editor/icons/svgs/solid/computer.png", false)},
+            {"Library", Texture::Load("Assets/Editor/icons/svgs/solid/book.png", false)},
+            {"ModelFile", Texture::Load("Assets/Editor/icons/svgs/solid/cubes.png", false)},
+            {"MeshFile", Texture::Load("Assets/Editor/icons/svgs/solid/cube.png", false)},
+            {"SceneFile", Texture::Load("Assets/Editor/icons/svgs/solid/earth-americas.png", false)},
+            {"ProjectFile", Texture::Load("Assets/Editor/icons/svgs/solid/diagram-project.png", false)},
+            {"PrefabFile", Texture::Load("Assets/Editor/icons/svgs/solid/person.png", false)},
 
         };
 
@@ -1586,7 +1787,7 @@ void RenderMgr::RenderEngineSpace()
             const auto& path = directory.path();
             //auto relativePath = std::filesystem::relative(path, )
 
-            std::string filename = path.filename().string();
+            std::string filename = path.stem().string();
 
             //ImGui::Columns(10);
 
@@ -1729,7 +1930,13 @@ void RenderMgr::RenderEngineSpace()
                     }
                     filetype = type;
                     selectedFile = true;
+                    renamingFile = false;
                     Entity::selectedEntity = false;
+                }
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+                {
+                    mousePos = ImGui::GetMousePos();
+                    fdopen = true;
                 }
 
                 if (ImGui::GetDragDropPayload() == nullptr) {
@@ -1746,12 +1953,95 @@ void RenderMgr::RenderEngineSpace()
 
             }
 
-            ImGui::TextWrapped(filename.c_str());
+                if (renamingFile && selected_file.compare(directory.path()) == 0) {
+                    if (ImGui::InputText("###ab", &filename))
+                    {
+                        if (ImGui::IsKeyDown(ImGuiKey_Enter))
+                        {
+
+                            filename.erase(remove(filename.begin(), filename.end(), '.'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '/'), filename.end());
+
+                            filename.erase(remove(filename.begin(), filename.end(), '`'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '~'), filename.end());
+
+                            filename.erase(remove(filename.begin(), filename.end(), '!'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '@'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '#'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '$'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '%'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '^'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '*'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '('), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), ')'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '+'), filename.end());
+                            filename.erase(remove(filename.begin(), filename.end(), '='), filename.end());
+
+                            string np = path.parent_path().string() + "//" + filename;
+
+                                if (!directory.is_directory()) {
+                                    np += path.extension().string();
+                                }
+
+                                np += "//";
+
+
+                            filesystem::rename(path, filesystem::path(np));
+                            renamingFile = false;
+                        }
+                    }
+                }
+                else {
+
+                    ImGui::TextWrapped(filename.c_str());
+
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    {
+                        selected_file = directory.path();
+                        filetype = type;
+                        selectedFile = true;
+                        renamingFile = false;
+                        Entity::selectedEntity = false;
+                        renamingFile = true;
+                    }
+                }
 
             ImGui::NextColumn();
         }
 
         ImGui::Columns(1);
+
+
+        if (fdopen) {
+
+            ImGui::SetNextWindowPos(mousePos);
+
+
+            float aspect = flt GetWindowSize().x / flt GetWindowSize().y;
+
+            ImVec2 size = { 100,200 };
+
+            ImGui::SetNextWindowSize({ size.x * aspect, size.y * aspect });
+
+            ImGuiWindowClass klass;
+
+            klass.ViewportFlagsOverrideSet = ImGuiViewportFlags_TopMost;
+
+            ImGui::SetNextWindowClass(&klass);
+
+            if (ImGui::Begin("Create Menu", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))
+            {
+
+                assetCreateMenu();
+            }
+            ImGui::End();
+
+            if (ImGui::IsKeyDown(ImGuiKey_Escape))
+            {
+                fdopen = false;
+            }
+        }
+
 
         ImGui::EndChild();
 
@@ -1776,6 +2066,9 @@ void RenderMgr::RenderEngineSpace()
 
             }
             ImGui::EndDragDropTarget();
+        } else
+        {
+
         }
 
         ImGui::SliderFloat("##ThumbnailSize", &thumbnailSize, 16, 64, "");
@@ -1876,7 +2169,40 @@ void RenderMgr::RenderEngineSpace()
 
         imgui_easy_theming(textCol, headCol, areaCol, bodyCol, areaCol);
 
+            if (ImGui::Button("Show popup"))
+            {
+                ImGui::OpenPopup("TestPopup");
+            }
+
+            ImVec2 wsiz = { GetWindowSize().x, GetWindowSize().y };
+
+            static float div = 3.5;
+
+            ImVec2 winSize = { GetWindowSize().x / div,GetWindowSize().y / div };
+
+            ImGui::SetNextWindowSize(winSize);
+            //ImGui::SetNextWindowPos({ wsiz.x * 0.5f, wsiz.y * 0.5f });
+
+            ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+            ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+                
+            if (ImGui::BeginPopupModal("TestPopup", 0, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse))
+            {
+                ImGui::DragFloat("size", &div, 0.01f, 0.25,10);
+
+                //div = std::clamp(div, 1.5f, 5.0f);
+                    
+                if (ImGui::IsKeyDown(ImGuiKey_Escape))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+
+                ImGui::EndPopup();
+            }
+
         ImGui::End();
+
+
 
     }
 
@@ -1936,7 +2262,12 @@ float RenderMgr::GetDeltaTime()
 
     // Compute time difference between current and last frame
     double currentTime = glfwGetTime();
-    float deltaTime = float(currentTime - lastTime);
+    static float deltaTime = 0;
+    if (!checkedDelta) {
+        deltaTime = float(currentTime - lastTime);
+        lastTime = currentTime;
+        checkedDelta = true;
+    }
     return deltaTime;
 }
 

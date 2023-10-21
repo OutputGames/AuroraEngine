@@ -153,6 +153,15 @@ struct AURORA_API Entity
     static Entity* Load(string data);
     void LoadData(string data);
 
+    ~Entity()
+    {
+        material = nullptr;
+        components.clear();
+        transform = nullptr;
+        id = 0;
+        name = "";
+    }
+
     Entity()
     {
         enabled = true;
@@ -251,7 +260,7 @@ struct AURORA_API Scene
     	Entity* CreateEntity();
     	Entity* CreateEntity(std::string name);
     	void RemoveEntity(Entity* entity);
-    	Entity* DuplicateEntity(Entity* entity);
+    	Entity* DuplicateEntity(Entity* entity, Entity* parent=nullptr);
         void InsertEntity(Entity* entity);
 
         void InsertPrefab(Prefab* prefab);
@@ -280,6 +289,7 @@ struct AURORA_API Scene
     std::string SaveScene();
     static Scene* GetScene();
     static Scene* LoadScene(std::string s, bool isNew);
+    static Scene* LoadScenePath(string path);
     static Scene* CreateScene(std::string s);
 
     Scene();

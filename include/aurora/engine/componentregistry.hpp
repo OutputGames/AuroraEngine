@@ -6,8 +6,10 @@
 #include "entity.hpp"
 #include "graphics/billboard.hpp"
 #include "graphics/lighting.hpp"
+#include "graphics/particle.hpp"
 #include "physics/physics.hpp"
 #include "runtime/scriptcomponent.hpp"
+#include <graphics/animation.hpp>
 
 struct AURORA_API ComponentRegistry
 {
@@ -23,7 +25,7 @@ struct AURORA_API ComponentRegistry
 
     };
 
-    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent, RigidBody3D>;
+    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent, RigidBody3D, ParticleEmitter, Animator>;
     
 };
 

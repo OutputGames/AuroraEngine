@@ -1,6 +1,7 @@
 #ifndef ANIMATION_HPP
 #define ANIMATION_HPP
 #include "model.hpp"
+#include "engine/entity.hpp"
 #include "glm/gtx/quaternion.hpp"
 
 struct KeyPosition
@@ -220,6 +221,19 @@ public:
         m_TicksPerSecond = animation->mTicksPerSecond;
         ReadHeirarchyData(m_RootNode, scene->mRootNode);
         ReadMissingBones(animation, *model);
+        path = animationPath;
+    }
+
+    Animation(const std::string& animationPath)
+    {
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(animationPath, aiProcess_Triangulate);
+        assert(scene && scene->mRootNode);
+        auto animation = scene->mAnimations[0];
+        m_Duration = animation->mDuration;
+        m_TicksPerSecond = animation->mTicksPerSecond;
+        ReadHeirarchyData(m_RootNode, scene->mRootNode);
+        path = animationPath;
     }
 
     ~Animation()
@@ -249,6 +263,8 @@ public:
     { 
         return m_BoneInfoMap;
     }
+
+	string path;
 
 private:
     void ReadMissingBones(const aiAnimation* animation, Model& model)
@@ -298,23 +314,26 @@ private:
     std::map<std::string, BoneInfo> m_BoneInfoMap;
 };
 
-class Animator
-{	
-public:
-    Animator::Animator(Animation* Animation)
-    {
-        m_CurrentTime = 0.0;
-        m_CurrentAnimation = Animation;
 
+class Animator : public Component
+{
+	CLASS_DECLARATION(Animator)
+
+public:
+	Animator(std::string&& initialValue) : Component(move(initialValue))
+	{
+	}
+
+    Animator()
+    {
         m_FinalBoneMatrices.reserve(200);
 
         for (int i = 0; i < 200; i++)
             m_FinalBoneMatrices.push_back(glm::mat4(1.0f));
     }
 	
-    void Animator::UpdateAnimation(float dt, Animation* animation)
+    void Animator::UpdateAnimation(float dt)
     {
-        m_CurrentAnimation = animation;
         m_DeltaTime = dt;
         if (m_CurrentAnimation)
         {
@@ -323,6 +342,8 @@ public:
             CalculateBoneTransform(&m_CurrentAnimation->GetRootNode(), glm::mat4(1.0f));
         }
     }
+
+    void Update() override;
 	
     void Animator::PlayAnimation(Animation* pAnimation)
     {
@@ -361,12 +382,14 @@ public:
     { 
         return m_FinalBoneMatrices;  
     }
+
+    void EngineRender() override;
 		
 private:
     std::vector<glm::mat4> m_FinalBoneMatrices;
-    Animation* m_CurrentAnimation;
-    float m_CurrentTime;
-    float m_DeltaTime;	
+    Animation* m_CurrentAnimation=nullptr;
+    float m_CurrentTime=0.0;
+    float m_DeltaTime=0.0;	
 };
 
 #endif

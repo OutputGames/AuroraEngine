@@ -20,6 +20,13 @@ struct Filesystem {
             std::cout << e.what();
         }
     }
+    static void CreateFile(string path)
+    {
+        ofstream file(path);
+
+        file.close();
+    }
+    static string ReplaceOccurences(std::string str, const std::string& from, const std::string& to);
 };
 
 #endif

@@ -6,7 +6,7 @@
 
 Material::Material()
 {
-    shader = new Shader("editor/shaders/0/");
+    shader = new Shader("Assets/Editor/shaders/0/");
     entity = nullptr;
 }
 
@@ -68,46 +68,112 @@ void Material::Update()
 
         for (std::pair<std::string, Material::UniformData> uniform : uniforms)
         {
-            GLenum type = uniform.second.type;
+            ShaderFactory::PropertyType type = uniform.second.type;
 
             switch (type) {
-            case GL_BOOL:
+            case ShaderFactory::Bool:
                 shader->setBool(uniform.first, uniform.second.b);
                 break;
-            case GL_INT:
+            case ShaderFactory::Int:
                 shader->setInt(uniform.first, uniform.second.i);
                 break;
-            case GL_FLOAT:
+            case ShaderFactory::Float:
                 shader->setFloat(uniform.first, uniform.second.f);
                 break;
-            case GL_FLOAT_VEC2:
+            case ShaderFactory::Vector2:
                 shader->setVec2(uniform.first, uniform.second.v2);
                 break;
-            case GL_FLOAT_VEC3:
+            case ShaderFactory::Vector3:
                 shader->setVec3(uniform.first, uniform.second.v3);
                 break;
-            case GL_FLOAT_VEC4:
+            case ShaderFactory::Vector4:
                 shader->setVec4(uniform.first, uniform.second.v4);
                 break;
-            case GL_FLOAT_MAT2:
+            case ShaderFactory::Mat2:
                 shader->setMat2(uniform.first, uniform.second.m2);
                 break;
-            case GL_FLOAT_MAT3:
+            case ShaderFactory::Mat3:
                 shader->setMat3(uniform.first, uniform.second.m3);
                 break;
-            case GL_FLOAT_MAT4:
+            case ShaderFactory::Mat4:
                 shader->setMat4(uniform.first, uniform.second.m4);
+                break;
+            case ShaderFactory::Color:
+                shader->setVec4(uniform.first, uniform.second.v4);
                 break;
             }
         }
     }
 }
 
-void Mesh::Draw()
+void Material::LoadFromData(string s)
+{
+    json d = json::parse(s);
+
+	LoadShader(Shader::CheckIfExists(d["shader"]));
+
+    auto unifs = d["uniforms"].get<json::object_t>();
+
+    for (auto unif : unifs)
+    {
+        if (uniforms.count(unif.first))
+        {
+            Material::UniformData ud = uniforms[unif.first];
+            ud.type = unif.second["type"];
+            ud.b = unif.second["b"];
+            ud.i = unif.second["i"];
+            ud.f = unif.second["f"];
+            ud.v2 = { unif.second["v2"][0],unif.second["v2"][1] };
+            ud.v3 = { unif.second["v3"][0],unif.second["v3"][1],unif.second["v3"][2] };
+            ud.v4 = { unif.second["v4"][0],unif.second["v4"][1],unif.second["v4"][2],unif.second["v4"][3] };
+            uniforms[unif.first] = ud;
+        }
+    }
+
+
+
+
+}
+
+string Material::Export()
+{
+    json m;
+
+    json mu = json::object();
+
+    for (pair<const string, Material::UniformData> uniform :uniforms)
+    {
+        json u;
+
+        Material::UniformData* uniformD = &uniform.second;
+
+        u["type"] = uniformD->type;
+        u["b"] = uniformD->b;
+        u["i"] = uniformD->i;
+        u["f"] = uniformD->f;
+        u["v2"] = { uniformD->v2.x, uniformD->v2.y };
+        u["v3"] = { uniformD->v3.x, uniformD->v3.y, uniformD->v3.z };
+        u["v4"] = { uniformD->v4.x, uniformD->v4.y, uniformD->v4.z, uniformD->v4.w };
+
+
+        mu[uniform.first] = u;
+
+    }
+
+    m["uniforms"] = mu;
+    m["shader"] = shader->shaderDirectory;
+
+    return m.dump(JSON_INDENT_AMOUNT);
+}
+
+void Mesh::Draw(bool instanced, int amt)
 {
     // draw mesh
     glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, data->indices.size(), GL_UNSIGNED_INT, 0);
+    if (instanced)
+        glDrawElementsInstanced(GL_TRIANGLES, data->indices.size(), GL_UNSIGNED_INT, 0, amt);
+    else
+		glDrawElements(GL_TRIANGLES, data->indices.size(), GL_UNSIGNED_INT, 0);
 }
 
 Mesh* Mesh::Upload(MeshData* data)
@@ -164,7 +230,7 @@ void Model::Draw()
 {
 	for (int i = 0; i < meshes.size(); ++i)
 	{
-        meshes[i]->Draw();
+        meshes[i]->Draw(false);
 	}
 }
 
@@ -319,6 +385,7 @@ Mesh* processMesh(aiMesh* mesh, const aiScene* scene, Model* model, std::string 
     data->name = mesh->mName.C_Str();
     data->index = meshIndex;
     data->path = model->path;
+    data->parent = model;
     
 
     // return a mesh object created from the extracted mesh data
@@ -375,10 +442,12 @@ Entity* processEntity(aiNode* node, const aiScene* scene, Model* model, Entity* 
     return e;
 }
 
-Entity* processPrefab(aiNode* node, const aiScene* scene, Model* model, Entity* parent)
+Entity* processPrefab(aiNode* node, const aiScene* scene, Model* model, Entity* parent, Shader* shader)
 {
 
     Entity* e = new Entity;
+
+    e->name = node->mName.C_Str();
 
     e->SetParent(parent);
 
@@ -397,12 +466,16 @@ Entity* processPrefab(aiNode* node, const aiScene* scene, Model* model, Entity* 
         Mesh* m = model->meshes[node->mMeshes[i]];
         MeshRenderer* r = e->AttachComponent<MeshRenderer>();
         r->mesh = m;
+        if (shader)
+        {
+            e->material->LoadShader(shader);
+        }
     }
 
     // then do the same for each of its children
     for (unsigned int i = 0; i < node->mNumChildren; i++)
     {
-        processPrefab(node->mChildren[i], scene, model, e);
+        processPrefab(node->mChildren[i], scene, model, e, shader);
     }
 
     return e;
@@ -435,7 +508,7 @@ Entity* Model::Load(string path)
     return entity;
 }
 
-Entity* Model::LoadEntityPrefab(string path, Model* m)
+Entity* Model::LoadEntityPrefab(string path, Model* m, Shader* shader)
 {
     Assimp::Importer import;
     const aiScene * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
@@ -452,9 +525,14 @@ Entity* Model::LoadEntityPrefab(string path, Model* m)
 
     entity->name = p.stem().string();
 
+    if (shader)
+    {
+        entity->material->LoadShader(shader);
+    }
+
     for (int i = 0; i < scene->mRootNode->mNumChildren; ++i)
     {
-        Entity* e = processPrefab(scene->mRootNode->mChildren[i], scene, m, entity);
+        Entity* e = processPrefab(scene->mRootNode->mChildren[i], scene, m, entity, shader);
 
     }
 
@@ -466,14 +544,6 @@ Model* Model::LoadModel(std::string path, ModelImportSettings* settings)
     Assimp::Importer import;
 
     unsigned flags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenBoundingBoxes;
-
-    if (settings) {
-
-        // global scale
-        
-		import.SetPropertyFloat(AI_CONFIG_GLOBAL_SCALE_FACTOR_KEY, settings->globalScale);
-        flags |= aiProcess_GlobalScale;
-    }
 
     const aiScene* scene = import.ReadFile(path, flags);
 
@@ -518,7 +588,7 @@ unsigned Model::GetIcon()
 
         if (s == nullptr)
         {
-            s = new Shader("editor/shaders/8");
+            s = new Shader("Assets/Editor/shaders/8");
         } else
         {
             //s->reload();
