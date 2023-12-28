@@ -10,3 +10,8 @@
 #include "utils/filesystem.hpp"
 
 AURORA_API void InitEngine();
+AURORA_API void InitScriptEngine();
+
+template<typename T>
+
+AURORA_API T* AttachComponent();

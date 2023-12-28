@@ -104,7 +104,7 @@ struct MonoRuntime
         inline static char fieldValueBuffer[8];
     };
 
-    static void Initialize();
+    AURORA_API static void Initialize();
     static MonoAssemblyAurora* OpenAssembly(string path);
     static void CompileScript(string path);
     static void OnRuntimeStart(Scene* scene);
@@ -112,6 +112,8 @@ struct MonoRuntime
     static void CompileProject(string path, string outPath);
     static bool ClassExists(string className);
     static MonoScriptInstance* GetEntityScriptInstance(uint32_t entityId);
+
+    static void InitProject();
 
     static void OnCreateComponent(Entity* entity);
     static void OnUpdateComponent(Entity* entity, float dt);

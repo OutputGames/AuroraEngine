@@ -55,15 +55,9 @@ using namespace nlohmann;
 #define RAD2DEG (180.0f/PI)
 #endif
 
-#ifndef AURORA_DLLBUILD
-#define AURORA_API __declspec(dllexport)
-#else
-#define AURORA_API __declspec(dllimport)
-#endif
-
 #define JSON_INDENT_AMOUNT 4
 
 
-GLFWwindow* GetWindow();
+AURORA_API GLFWwindow* GetWindow();
 
 #endif

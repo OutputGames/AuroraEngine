@@ -1,5 +1,7 @@
 #include "project.hpp"
 
+#include <future>
+
 #include "json.hpp"
 #include "assets/processor.hpp"
 #include "dirent/dirent.h"
@@ -40,7 +42,7 @@ void Project::Save()
 Project* Project::Load(std::string path)
 {
 	Project* p = new Project(path);
-	Shader::loadedShaders.clear();
+	Shader::UnloadAllShaders();
 
 	std::filesystem::path projPath = std::filesystem::path(path);
 
@@ -120,9 +122,7 @@ Project* Project::Create(std::string path, std::string name)
 
 void ProcessEdits()
 {
-	Project::GetProject()->processor->CheckForEdits();
-
-	Timer* timer = new Timer(10, ProcessEdits);
+	Project::GetProject()->processor->CheckForEdits(true);
 }
 
 
@@ -130,6 +130,9 @@ void Project::Init()
 {
 	processor = new AssetProcessor;
 	processor->Init(assetPath);
+	auto handle = std::async(launch::async, ProcessEdits);
+
+	cout << "created asset processor thread" << endl;
 
 }
 

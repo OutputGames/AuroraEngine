@@ -11,6 +11,12 @@ struct Math
     static vec3 StringToVec3(string s);
     static vec4 StringToVec4(string s);
 
+    static vec3 FixEulers(vec3 e);
+    static float Lerp(float a, float b, float f)
+    {
+        return a + f * (b - a);
+    }
+
 };
 
 

@@ -116,18 +116,18 @@ struct AssetProcessor
 {
 	void SetupImporters();
     void Init(string path);
-    AURORA_API void CheckForEdits();
+    AURORA_API void CheckForEdits(bool IsThreaded);
 
     template <typename T>
-    T* GetAsset(string path);
+     AURORA_API T* GetAsset(string path);
 
     vector<Asset*> GetAssetsOfType(Asset::AssetType type);
 
-    static void CreateDefaultAsset(string path, Asset::AssetType type);
+    AURORA_API static void CreateDefaultAsset(string path, Asset::AssetType type);
 
 private:
 
-    bool IsFileCached(string path);
+    AURORA_API bool IsFileCached(string path);
     unordered_map<string,Asset*> cachedFiles;
     string project_path;
     unordered_map<Asset::AssetType, function<Asset* (AssetProcessor*, string)>> assetImportFuncs;

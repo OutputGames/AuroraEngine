@@ -1,6 +1,7 @@
 #include "lighting.hpp"
 
 #include "billboard.hpp"
+#include "shape.hpp"
 #include "engine/imgui_ext.hpp"
 #include "glm/detail/_noise.hpp"
 #include "glm/detail/_noise.hpp"
@@ -49,6 +50,7 @@ void PointLight::Update()
 	if (entity->GetComponent<Billboard>())
 	{
 		entity->GetComponent<Billboard>()->color = color;
+		entity->GetComponent<Billboard>()->showInEditorOnly = true;
 	}
 }
 
@@ -66,6 +68,9 @@ void PointLight::EngineRender()
 	color = { lcol[0], lcol[1], lcol[2] };
 
 	ImGui::SliderFloat("Light Power", &power, 0, 1000);
+
+	ImGui::DragFloat("Near Plane", &near_plane, 0.1f, 0.0001f, far_plane-0.001f);
+	ImGui::DragFloat("Far Plane", &far_plane, 0.1f, near_plane+0.001f, 1000.0f);
 }
 
 std::string PointLight::GetIcon()
@@ -122,7 +127,7 @@ std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& projview)
 	return frustumCorners;
 }
 
-const unsigned int SHADOWMAP_RESOLUTION = 4096;
+const unsigned int SHADOWMAP_RESOLUTION = 1024;
 
 
 std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view)
@@ -216,58 +221,37 @@ std::vector<glm::mat4> getLightSpaceMatrices(float cameraFarPlane, float cameraN
 
 void PointLight::CalcShadowMap(int prebuffer)
 {
-	near_plane = 0.01f;
-	far_plane = 150.0f;
+	//near_plane = 0.01f;
+	//far_plane = 500.0f;
 
-	vector<float> shadowCascadeLevels = GetCascadeLevels(far_plane);
+	//vector<float> shadowCascadeLevels = GetCascadeLevels(far_plane);
 	if (shadowMap == 0)
 	{
 		glGenFramebuffers(1, &depthMapFBO);
 		// create depth texture
 		unsigned int depthMap;
 		glGenTextures(1, &depthMap);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, depthMap);
-		glTexImage3D(
-			GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, int(shadowCascadeLevels.size()) + 1,
-			0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-		constexpr float bordercolor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, bordercolor);
-
+		glBindTexture(GL_TEXTURE_2D, depthMap);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+		// attach depth texture as FBO's depth buffer
 		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthMap, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
-
-		int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE)
-		{
-			std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!";
-			//throw 0;
-		}
-
 		glBindFramebuffer(GL_FRAMEBUFFER, prebuffer);
 
 		shadowMap = depthMap;
 	}
 
-	if (matricesUBO == 0)
-	{
-		glGenBuffers(1, &matricesUBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
-		glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-	}
-
 	if (simpleDepthShader == nullptr)
 	{
-		simpleDepthShader = new Shader("Assets/Editor/shaders/7", true, true);
+		simpleDepthShader = new Shader("Assets/Editor/shaders/7");
 	}
 
 
@@ -277,24 +261,15 @@ void PointLight::CalcShadowMap(int prebuffer)
 
 	lightView = glm::lookAt(entity->transform->position, vec3{ 0 }, glm::vec3(0.0, 1.0, 0.0));
 
-	const auto lightMatrices = getLightSpaceMatrices(far_plane, near_plane, lightView, entity->transform->position);
-	glBindBuffer(GL_UNIFORM_BUFFER, matricesUBO);
-	for (size_t i = 0; i < lightMatrices.size(); ++i)
-	{
-		glBufferSubData(GL_UNIFORM_BUFFER, i * sizeof(glm::mat4x4), sizeof(glm::mat4x4), &lightMatrices[i]);
-	}
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	spaceMatrix = lightProjection * lightView;
 
-	spaceMatrices = lightMatrices;
-
-	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 	glViewport(0, 0, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION);
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_TEXTURE_2D_ARRAY, shadowMap, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 	glClear(GL_DEPTH_BUFFER_BIT);
 
 	//simpleDepthShader->reload();
 	simpleDepthShader->use();
-	//simpleDepthShader->setMat4("lightSpaceMatrix", spaceMatrix);
+	simpleDepthShader->setMat4("lightSpaceMatrix", spaceMatrix);
 	simpleDepthShader->setFloat("near_plane", near_plane);
 	simpleDepthShader->setFloat("far_plane", far_plane);
 
@@ -303,8 +278,6 @@ void PointLight::CalcShadowMap(int prebuffer)
 	for (RenderData* render_obj : RenderMgr::renderObjs)
 	{
 		if (render_obj->castShadow) {
-
-			simpleDepthShader->use();
 
 			simpleDepthShader->setMat4("model", render_obj->matrix);
 
@@ -376,54 +349,8 @@ void Skybox::EngineRender()
 	}
 }
 
-unsigned int brdfLUTTexture;
-
 unsigned int captureFBO;
 unsigned int captureRBO;
-
-unsigned int quadVAO = 0;
-unsigned int quadVBO, quadEBO;
-void renderQuad()
-{
-	if (quadVAO == 0)
-	{
-		float vertices[] = {
-			// positions          // colors           // texture coords
-			 1.0f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f, // top right
-			 1.0f, -1.0f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, // bottom right
-			-1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f, // bottom left
-			-1.0f,  1.0f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f  // top left 
-		};
-		unsigned int indices[] = {
-			0, 1, 3, // first triangle
-			1, 2, 3  // second triangle
-		};
-		glGenVertexArrays(1, &quadVAO);
-		glGenBuffers(1, &quadVBO);
-		glGenBuffers(1, &quadEBO);
-
-		glBindVertexArray(quadVAO);
-
-		glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-		// position attribute
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		// color attribute
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-		// texture coord attribute
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-		glEnableVertexAttribArray(2);
-	}
-	glBindVertexArray(quadVAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
-}
 
 // renderCube() renders a 1x1 3D cube in NDC.
 // -------------------------------------------------
@@ -710,39 +637,94 @@ void Skybox::LoadFromJSON(json data)
 	}
 }
 
+DeferredLightingData::DeferredLightingData(int w, int h)
+{
+	Generate(w, h);
+}
+
+void DeferredLightingData::Resize(vec2 size)
+{
+	this->size = size;
+
+	glDeleteFramebuffers(1, &gBuffer);
+
+	glDeleteTextures(1, &gPos);
+	glDeleteTextures(1, &gNrm);
+	glDeleteTextures(1, &gAlb);
+	glDeleteTextures(1, &gSha);
+
+	gBuffer = 0;
+
+	Generate(size.x, size.y);
+}
+
+void DeferredLightingData::Generate(int w, int h)
+{
+	glGenFramebuffers(1, &gBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+
+	glm::vec2 screenSize = { w, h };
+
+	size = screenSize;
+
+	// position color buffer
+	glGenTextures(1, &gPos);
+	glBindTexture(GL_TEXTURE_2D, gPos);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPos, 0);
+	// normal color buffer
+	glGenTextures(1, &gNrm);
+	glBindTexture(GL_TEXTURE_2D, gNrm);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNrm, 0);
+	// color + specular color buffer
+	glGenTextures(1, &gAlb);
+	glBindTexture(GL_TEXTURE_2D, gAlb);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlb, 0);
+	glGenTextures(1, &gSha);
+	glBindTexture(GL_TEXTURE_2D, gSha);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gSha, 0);
+
+	glGenTextures(1, &gTrm);
+	glBindTexture(GL_TEXTURE_2D, gTrm);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, gTrm, 0);
+
+	// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
+	unsigned int attachments[5] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+	glDrawBuffers(5, attachments);
+	// create and attach depth buffer (renderbuffer)
+	unsigned int rboDepth;
+	glGenRenderbuffers(1, &rboDepth);
+	glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, screenSize.x, screenSize.y);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+	// finally check if framebuffer is complete
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "Framebuffer not complete!" << std::endl;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void LightingMgr::EditMaterial(Material* material)
 {
 	if (captureFBO == 0)
 	{
 		glGenFramebuffers(1, &captureFBO);
 		glGenRenderbuffers(1, &captureRBO);
-	}
-	if (brdfLUTTexture == 0)
-	{
-		glGenTextures(1, &brdfLUTTexture);
-
-		Shader brdfShader("Assets/Editor/shaders/3", false, false);
-
-		// pre-allocate enough memory for the LUT texture.
-		glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT, 0);
-		// be sure to set wrapping mode to GL_CLAMP_TO_EDGE
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-		// then re-configure capture framebuffer object and render screen-space quad with BRDF shader.
-		glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
-		glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, brdfLUTTexture, 0);
-
-		glViewport(0, 0, 512, 512);
-		brdfShader.use();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		renderQuad();
-		glBindFramebuffer(GL_FRAMEBUFFER,0);
 	}
 
 	bool hasBRDF=false, hasIrradiance=false, hasPrefilter=false, hasShadowMap=false;
@@ -780,7 +762,10 @@ void LightingMgr::EditMaterial(Material* material)
 
 	if (!hasBRDF)
 	{
-		Texture t = {brdfLUTTexture, "texture_brdf"};
+		Texture t = Texture{};
+
+		t.ID = GetBRDFTexture();
+		t.type = "texture_brdf";
 
 		material->textures.push_back(t); 
 	}
@@ -795,7 +780,11 @@ void LightingMgr::EditMaterial(Material* material)
 				{
 				}
 				else {
-					Texture t = { sky->irradianceMap, "texture_rad", true };
+					Texture t = { };
+
+					t.ID = sky->irradianceMap;
+					t.type = "texture_rad";
+					t.isCubemap = true;
 
 					material->textures.push_back(t);
 				}
@@ -808,7 +797,11 @@ void LightingMgr::EditMaterial(Material* material)
 
 				}
 				else {
-					Texture t = { sky->prefilterMap, "texture_pref", true };
+					Texture t = { };
+
+					t.ID = sky->prefilterMap;
+					t.type = "texture_pref";
+					t.isCubemap = true;
 
 					material->textures.push_back(t);
 				}
@@ -835,7 +828,12 @@ void LightingMgr::EditMaterial(Material* material)
 
 			if (!hasShadowMap && light->shadowMap != 0)
 			{
-				Texture t = { light->shadowMap, "texture_shad", false };
+				Texture t = { };
+
+				t.ID = light->shadowMap;
+				t.type = "texture_shad";
+				t.isCubemap = false;
+
 				material->textures.push_back(t);
 			}
 		} else
@@ -864,67 +862,28 @@ void LightingMgr::RemoveLight(PointLight* light)
 
 }
 
-unsigned LightingMgr::GetGeometryBuffer()
+void LightingMgr::Unload()
+{
+	lights.clear();
+	sky = nullptr;
+
+	glDeleteFramebuffers(1, &gBuffer);
+
+	glDeleteTextures(1, &gPosition);
+	glDeleteTextures(1, &gNormal);
+	glDeleteTextures(1, &gAlbedoSpec);
+	glDeleteTextures(1, &gCombined);
+
+	gBuffer = 0;
+}
+
+GLuint LightingMgr::GetBRDFTexture()
 {
 
-	if (gBuffer == 0)
+	static unsigned int brdfLUTTexture;
+
+	if (brdfLUTTexture == 0)
 	{
-		glGenFramebuffers(1, &gBuffer);
-		glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-
-		glm::vec2 screenSize = RenderMgr::GetSceneWinSize();
-
-		// position color buffer
-		glGenTextures(1, &gPosition);
-		glBindTexture(GL_TEXTURE_2D, gPosition);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
-		// normal color buffer
-		glGenTextures(1, &gNormal);
-		glBindTexture(GL_TEXTURE_2D, gNormal);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
-		// color + specular color buffer
-		glGenTextures(1, &gAlbedoSpec);
-		glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
-		glGenTextures(1, &gCombined);
-		glBindTexture(GL_TEXTURE_2D, gCombined);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screenSize.x, screenSize.y, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gCombined, 0);
-
-		// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
-		unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-		glDrawBuffers(4, attachments);
-		// create and attach depth buffer (renderbuffer)
-		unsigned int rboDepth;
-		glGenRenderbuffers(1, &rboDepth);
-		glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, screenSize.x, screenSize.y);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-		// finally check if framebuffer is complete
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			std::cout << "Framebuffer not complete!" << std::endl;
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	}
-
-	bool genBrdf = (brdfLUTTexture == 0);
-
-	//genBrdf = true;
-
-	if (genBrdf)
-	{
-
 		if (captureFBO == 0)
 		{
 			glGenFramebuffers(1, &captureFBO);
@@ -960,156 +919,9 @@ unsigned LightingMgr::GetGeometryBuffer()
 		glViewport(0, 0, 512, 512);
 		brdfShader.use();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		renderQuad();
+		ShapeMgr::DrawQuad();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
-	return gBuffer;
-
-}
-
-void LightingMgr::UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 viewMatrix, vec3 viewParams, mat4 projection)
-{
-	static Shader* shaderLightingPass;
-
-	if (shaderLightingPass == nullptr)
-	{
-		shaderLightingPass = new Shader("Assets/Editor/shaders/9/");
-	}
-
-	float time = glfwGetTime();
-
-	//shaderLightingPass->reload();
-
-	glm::vec2 screenSize = RenderMgr::GetSceneWinSize();
-
-	// 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
-// -----------------------------------------------------------------------------------------------------------------------
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	shaderLightingPass->use();
-
-	shaderLightingPass->setInt("gPosition", 0);
-	shaderLightingPass->setInt("gNormal", 1);
-	shaderLightingPass->setInt("gAlbedo", 2);
-	shaderLightingPass->setInt("gCombined", 3);
-
-	shaderLightingPass->setInt("brdf", 4);
-	shaderLightingPass->setInt("irradiance", 5);
-	shaderLightingPass->setInt("prefilter", 6);
-	shaderLightingPass->setInt("cubemap", 7);
-
-	shaderLightingPass->setMat4("view", viewMatrix);
-	shaderLightingPass->setVec3("viewParams", viewParams);
-	shaderLightingPass->setVec2("screenParams", screenSize);
-	shaderLightingPass->setMat4("projection", projection);
-
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, gPosition);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, gNormal);
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, gCombined);
-	glActiveTexture(GL_TEXTURE4);
-	glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
-	if (sky) {
-		glActiveTexture(GL_TEXTURE5);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->irradianceMap);
-		glActiveTexture(GL_TEXTURE6);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->prefilterMap);
-		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, sky->cubemap_texture.ID);
-	}
-
-	int texCtr = 7;
-
-	int ctr = 0;
-	for (int i = 0; i < 10; i++)
-	{
-		std::string light_un = "lights[" + to_string(ctr) + "]";
-		if (i < lights.size()) {
-			PointLight* light = lights[i];
-
-			shaderLightingPass->setVec3(light_un + ".position", light->entity->transform->position);
-			shaderLightingPass->setVec3(light_un + ".direction", light->entity->transform->GetEulerAngles());
-			shaderLightingPass->setVec3(light_un + ".color", light->color);
-			shaderLightingPass->setBool(light_un + ".enabled", light->enabled);
-			shaderLightingPass->setFloat(light_un + ".power", light->power);
-
-			shaderLightingPass->setFloat("far_plane", light->far_plane);
-			shaderLightingPass->setFloat("near_plane", light->near_plane);
-			shaderLightingPass->setInt("cascadeCount", GetCascadeLevels(light->far_plane).size());
-			for (size_t i2 = 0; i2 < GetCascadeLevels(light->far_plane).size(); ++i2)
-			{
-				shaderLightingPass->setFloat("cascadePlaneDistances[" + std::to_string(i2) + "]", GetCascadeLevels(light->far_plane)[i2]);
-			}
-
-			//shaderLightingPass->setMat4(light_un + ".lightSpaceMatrix", light->spaceMatrix);
-
-			
-
-			if (light->shadowMap != 0)
-			{
-				texCtr++;
-				shaderLightingPass->setInt("shadowMap", texCtr);
-
-				GLenum tex = GL_TEXTURE0 + texCtr;
-
-				glActiveTexture(tex);
-				glBindTexture(GL_TEXTURE_2D_ARRAY, light->shadowMap);
-
-			}
-			
-		}
-		else
-		{
-			shaderLightingPass->setBool(light_un + ".enabled", false);
-			//material->entity->material->uniforms[(light_un + ".enabled")].b = false;
-		}
-		ctr++;
-	}
-
-	shaderLightingPass->setVec3("viewPos",viewPos);
-	// finally render quad
-	renderQuad();
-
-	// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
-	// ----------------------------------------------------------------------------------
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prebuffer); // write to default framebuffer
-	// blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
-	// the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the 		
-	// depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
-	glBlitFramebuffer(0, 0, screenSize.x, screenSize.y, 0, 0, screenSize.x, screenSize.y, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-	glBindFramebuffer(GL_FRAMEBUFFER, prebuffer);
-}
-
-void LightingMgr::ResizeGeometryBuffer(vec2 size)
-{
-	glDeleteFramebuffers(1, &gBuffer);
-
-	glDeleteTextures(1, &gPosition);
-	glDeleteTextures(1, &gNormal);
-	glDeleteTextures(1, &gAlbedoSpec);
-	glDeleteTextures(1, &gCombined);
-
-	gBuffer = 0;
-}
-
-void LightingMgr::Unload()
-{
-	lights.clear();
-	sky = nullptr;
-
-	glDeleteFramebuffers(1, &gBuffer);
-
-	glDeleteTextures(1, &gPosition);
-	glDeleteTextures(1, &gNormal);
-	glDeleteTextures(1, &gAlbedoSpec);
-	glDeleteTextures(1, &gCombined);
-	glDeleteTextures(1, &brdfLUTTexture);
-
-	gBuffer = 0;
-	brdfLUTTexture = 0;
+	return brdfLUTTexture;
 }

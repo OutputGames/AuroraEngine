@@ -14,16 +14,16 @@ public:
 
     MeshRenderer() = default;
 
-    void Init() override;
-    void Update() override;
-    void Unload() override;
-    std::string PrintToJSON() override;
-    void LoadFromJSON(nlohmann::json data) override;
-    void EngineRender() override;
+    AURORA_API void Init() override;
+    AURORA_API void Update() override;
+    AURORA_API void Unload() override;
+    AURORA_API std::string PrintToJSON() override;
+    AURORA_API void LoadFromJSON(nlohmann::json data) override;
+    AURORA_API void EngineRender() override;
 
 	std::string icon = ICON_FA_CUBE;
 
-    std::string GetIcon() override;
+    AURORA_API std::string GetIcon() override;
 
     Mesh* mesh;
 private:
@@ -40,16 +40,16 @@ public:
 
     ModelRenderer() = default;
 
-    void Init()  override;
-    void Update() override;
-    void Unload() override;
-    std::string PrintToJSON() override;
-    void LoadFromJSON(nlohmann::json data) override;
-    void EngineRender() override;
+    AURORA_API void Init()  override;
+    AURORA_API void Update() override;
+    AURORA_API void Unload() override;
+    AURORA_API std::string PrintToJSON() override;
+    AURORA_API void LoadFromJSON(nlohmann::json data) override;
+    AURORA_API void EngineRender() override;
 
 	std::string icon = ICON_FA_CUBES;
 
-    std::string GetIcon() override;
+    AURORA_API std::string GetIcon() override;
 
     Model* model;
 };

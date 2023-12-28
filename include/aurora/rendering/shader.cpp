@@ -2,6 +2,8 @@
 
 #include "utils/math.hpp"
 
+unordered_map<string, Shader*> loadedShaders = unordered_map<string, Shader*>();
+
 ShaderFactory::PropertyType ShaderFactory::GetTypeFromName(string n)
 {
 	if (n == "Float") return Float;
@@ -91,6 +93,42 @@ ShaderFactory::ShaderData *ShaderFactory::LoadData(json j)
     return data;
 }
 
+unordered_map<string, Shader*> Shader::GetLoadedShaders()
+{
+	return loadedShaders;
+}
+
+Shader::Shader(std::string shaderDirectory, bool useGeometry, bool logShader)
+{
+
+	std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
+
+	string shaderDir = filesystem::path(shaderDirectory).string();
+
+	if (!loadedShaders.count(shaderDir)) {
+		this->shaderDirectory = shaderDir;
+		this->useGeometry = useGeometry;
+		name = shaderDir;
+		this->reload();
+		if (logShader) {
+			loadedShaders.insert({ shaderDir, this });
+		}
+
+	} else
+	{
+		Shader* preloadedShader = loadedShaders[shaderDir];
+
+		//cout << preloadedShader->ID;
+
+		//Logger::Log("got preloaded shader: " + preloadedShader->name + " with id: " + to_string(preloadedShader->ID));
+
+		this->ID = preloadedShader->ID;
+		this->shaderDirectory = preloadedShader->shaderDirectory;
+		this->name = preloadedShader->name;
+		this->useGeometry = preloadedShader->useGeometry;
+	}
+}
+
 Shader::Shader(const char* path, bool overwrite)
 {
 
@@ -173,6 +211,7 @@ Shader::Shader(const char* path, bool overwrite)
 		"layout (location = 1) out vec4 DEFERRED_NORMAL;\n"
 		"layout (location = 2) out vec4 DEFERRED_COLOR;\n"
 		"layout (location = 3) out vec4 DEFERRED_SHADING;\n"
+		"layout (location = 4) out vec4 DEFERRED_TRM;\n"
 		"\n"
 		"in vec2 OUTPUT_TEXCOORDS;\n"
 		"in vec3 OUTPUT_POS;\n"
@@ -622,6 +661,49 @@ Shader::Shader(const char* path, bool overwrite)
 	Filesystem::WriteFileString("C:/Users/chris/Downloads/testproj/Assets/testvtx.txt", vertexShaderCode);
 	Filesystem::WriteFileString("C:/Users/chris/Downloads/testproj/Assets/testfrg.txt", fragmentShaderCode);
 
+}
+
+Shader* Shader::CheckIfExists(string shaderDirectory, bool isFactory)
+{
+	std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
+
+	string shaderDir = filesystem::path(shaderDirectory).string();
+
+	if (!loadedShaders.count(shaderDir)) {
+		if (isFactory)
+		{
+			return new Shader(shaderDir.c_str(), true);
+		}
+		else {
+			return new Shader(shaderDir);
+		}
+	}
+	else
+	{
+		Shader* preloadedShader = loadedShaders[shaderDir];
+
+		return preloadedShader;
+	}
+}
+
+void Shader::UnloadAllShaders()
+{
+	for (auto loaded_shader : loadedShaders)
+	{
+		glDeleteProgram(loaded_shader.second->ID);
+	}
+	loadedShaders.clear();
+}
+
+void Shader::ReloadAllShaders()
+{
+	for (pair<const string, Shader*> loaded_shader : loadedShaders)
+	{
+		if (loaded_shader.second)
+		{
+			loaded_shader.second->reload();
+		}
+	}
 }
 
 string Shader::CreateShader()

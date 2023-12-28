@@ -18,11 +18,6 @@ struct AURORA_API TextureColorBuffer;
 struct AURORA_API Mesh;
 struct AURORA_API Entity;
 
-namespace Engine
-{
-	class Shader;
-}
-
 class AssimpGLMHelpers
 {
 public:
@@ -87,6 +82,8 @@ struct AURORA_API Material
 
     void Update();
 
+    void UpdateUniforms();
+
     string path;
 
     Entity* entity;
@@ -107,6 +104,8 @@ struct AURORA_API Material
             mat4 m4;
         };
     };
+
+    map<string, UniformData> uniformCache;
 
     std::map<std::string, UniformData> uniforms;
 

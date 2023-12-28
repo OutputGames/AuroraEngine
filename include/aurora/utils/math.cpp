@@ -62,3 +62,8 @@ vec4 Math::StringToVec4(string s)
     }
     return v;
 }
+
+vec3 Math::FixEulers(vec3 e)
+{
+    return { e.x, e.y, e.z };
+}

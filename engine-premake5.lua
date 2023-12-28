@@ -19,7 +19,7 @@ project "AuroraEngine"
 
    files {"resources\\**", "**.json", "lib\\**"}
 
-   includedirs {"include\\", "include\\aurora\\"}
+   includedirs {"include\\", "include\\aurora\\", "include\\auroraengine"}
 
 
    links {

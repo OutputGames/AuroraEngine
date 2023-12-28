@@ -64,7 +64,7 @@ group "Core"
 	include "core-premake5.lua"
 group ""
 
-group "Misc"
+group "Engine"
 	include "engine-premake5.lua"
 group ""
 

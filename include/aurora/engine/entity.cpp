@@ -10,18 +10,14 @@
 #include "imgui/imgui.h"
 #include "graphics/lighting.hpp"
 #include "physics/physics.hpp"
+#include "rendering/camera.hpp"
 #include "rendering/render.hpp"
 #include "runtime/monort.hpp"
 #include "utils/filesystem.hpp"
 
 using namespace nlohmann;
 
-const std::size_t Component::Type = std::hash<const char*>()(TO_STRING(Component));
-
-bool Entity::selectedEntity;
-int Entity::selected_id;
-
-std::map<std::string, std::shared_ptr<Component>(*)()> ComponentRegistry::cmp_map = std::map<std::string, std::shared_ptr<Component>(*)()>();
+//const std::size_t Component::Type = std::hash<const char*>()(TO_STRING(Component));
 
 void Transform::CopyTransforms(mat4 matrix, bool isGlobal)
 {
@@ -283,111 +279,6 @@ void Entity::SetParent(Entity* e)
 
     transform->parent = e->transform;
 }
-
-void Entity::DrawTree(Entity* entity)
-{
-    if (entity == nullptr)
-        return;
-
-    const bool is_selected = (selected_id == entity->id);
-
-    ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_OpenOnArrow;
-
-    ImGuiTreeNodeFlags node_flags = base_flags;
-
-    if (is_selected)
-        node_flags |= ImGuiTreeNodeFlags_Selected;
-
-    std::string cicon = ICON_FA_CHECK;
-
-    if (!entity->enabled)
-        cicon = ICON_FA_XMARK;
-
-    if (ImGui::Button((cicon + "###" + to_string(entity->id)).c_str()))
-    {
-        entity->enabled = !entity->enabled;
-    }
-
-
-    ImGui::SameLine();
-
-    string label = entity->name + "###" + to_string(entity->id);
-
-
-
-	if (ImGui::TreeNodeEx(label.c_str(), node_flags))
-	{
-        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-        if (is_selected) {
-            ImGui::SetItemDefaultFocus();
-        }
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
-        {
-            selected_id = entity->id;
-            selectedEntity = true;
-        }
-
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-        {
-            ImGui::Text(entity->name.c_str());
-            ImGui::SetDragDropPayload("ENT_MOVE", &entity->id, sizeof(int));
-            ImGui::EndDragDropSource();
-        }
-
-        if (ImGui::BeginDragDropTarget())
-        {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENT_MOVE"))
-            {
-                int payload_n = *(const int*)payload->Data;
-
-                Scene::GetScene()->entity_mgr->entities[payload_n]->SetParent(entity);
-
-            }
-            ImGui::EndDragDropTarget();
-        }
-
-        ImGui::Indent();
-		for (shared_ptr<Transform> child : entity->transform->children)
-		{
-			DrawTree(child->entity);
-		}
-        ImGui::Unindent();
-
-		ImGui::TreePop();
-	} else
-	{
-        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-        if (is_selected) {
-            ImGui::SetItemDefaultFocus();
-        }
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
-        {
-            selected_id = entity->id;
-            selectedEntity = true;
-        }
-
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoDisableHover | ImGuiDragDropFlags_SourceNoHoldToOpenOthers))
-        {
-            ImGui::Text(entity->name.c_str());
-            ImGui::SetDragDropPayload("ENT_MOVE", &entity->id, sizeof(int));
-            ImGui::EndDragDropSource();
-        }
-
-        if (ImGui::BeginDragDropTarget())
-        {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENT_MOVE"))
-            {
-                int payload_n = *(const int*)payload->Data;
-
-                Scene::GetScene()->entity_mgr->entities[payload_n]->SetParent(entity);
-
-            }
-            ImGui::EndDragDropTarget();
-        }
-	}
-
-}
-
 void Entity::SetShader(Shader* shader)
 {
     material->LoadShader(shader);
@@ -430,7 +321,7 @@ void Entity::LoadData(string data)
 
     for (auto child : children)
     {
-        string childData = child.dump(JSON_INDENT_AMOUNT);
+        string childData = child.dump();
 
         Entity* childEntity = Load(childData);
 
@@ -453,7 +344,7 @@ void Entity::LoadData(string data)
 
     e->enabled = ej["enabled"];
 
-    e->material->LoadFromData(ej["material"].dump(JSON_INDENT_AMOUNT));
+    e->material->LoadFromData(ej["material"]);
 }
 
 void Entity::Update()
@@ -462,6 +353,7 @@ void Entity::Update()
     if (material)
     {
         material->entity = this;
+        material->UpdateUniforms();
     }
 
     transform->entity = this;
@@ -471,6 +363,14 @@ void Entity::Update()
     for (auto const& component : components)
     {
         component.get()->Update();
+    }
+}
+
+void Entity::LateUpdate()
+{
+    for (auto const& component : components)
+    {
+        component.get()->LateUpdate();
     }
 }
 
@@ -485,6 +385,13 @@ void Scene::EntityMgr::Update()
     {
         if (entity->enabled) {
             entity->Update();
+        }
+    }
+
+    for (auto const& entity : entities)
+    {
+        if (entity->enabled) {
+            entity->LateUpdate();
         }
     }
 }
@@ -598,6 +505,10 @@ void Component::Update()
 {
 }
 
+void Component::LateUpdate()
+{
+}
+
 void Component::Unload()
 {
 }
@@ -703,7 +614,7 @@ string Scene::ToString()
     j["entities"] = entities;
     j["path"] = path;
 
-    return j.dump(JSON_INDENT_AMOUNT);
+    return j.dump();
 }
 
 void Scene::LoadScene(string sc)
@@ -867,6 +778,16 @@ Scene* Scene::CreateScene(std::string s)
         scene->light_mgr->lights.push_back(light);
     }
 
+    {
+        Entity* entity = scene->entity_mgr->CreateEntity("Main Camera");
+
+        Camera* camera = entity->AttachComponent<Camera>();
+
+        camera->FieldOfView = 70.0f;
+
+        entity->Init();
+    }
+
     std::string projFilePath =  "Assets/Scenes/" + s + ".auscene";
 
     std::ofstream projFile(projFilePath);
@@ -875,7 +796,7 @@ Scene* Scene::CreateScene(std::string s)
 
     projJSON["name"] = s;
 
-    projFile << projJSON.dump(JSON_INDENT_AMOUNT);
+    projFile << projJSON.dump();
 
     projFile.close();
 

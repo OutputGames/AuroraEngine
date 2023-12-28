@@ -93,6 +93,7 @@ void Billboard::Update()
     data->castShadow = false;
     data->cullBack = true;
     data->deferred = false;
+    data->editorOnly = showInEditorOnly;
 
     RenderMgr::renderObjs.push_back(data);
 

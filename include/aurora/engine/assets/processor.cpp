@@ -160,8 +160,9 @@ void AssetProcessor::Init(string path)
 	project_path = path;
 }
 
-void AssetProcessor::CheckForEdits()
+void AssetProcessor::CheckForEdits(bool IsThreaded)
 {
+
 	for (const auto& dirEntry : recursive_directory_iterator(project_path)) {
 		filesystem::path dirPath(dirEntry);
 		if (!dirEntry.is_directory())
@@ -191,6 +192,12 @@ void AssetProcessor::CheckForEdits()
 			}
 		}
 		ctr++;
+	}
+
+	if (IsThreaded) {
+		//this_thread::sleep_for(10000ms);
+
+		cout << "checking for edits" << endl;
 	}
 }
 

@@ -406,6 +406,17 @@ MonoRuntime::MonoScriptInstance* MonoRuntime::GetEntityScriptInstance(uint32_t e
     return it->second;
 }
 
+void MonoRuntime::InitProject()
+{
+    if (Project::ProjectLoaded())
+    {
+        Project* project = Project::GetProject();
+
+        string generatePath = "C:/Users/chris/Downloads/AuroraEngine/projectsys/generate.bat";
+
+    }
+}
+
 void MonoRuntime::OnCreateComponent(Entity* entity)
 {
     const auto& sc = entity->GetComponent<ScriptComponent>();

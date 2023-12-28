@@ -10,13 +10,13 @@ struct AURORA_API RenderData
 {
     Mesh* mesh;
     mat4 matrix = mat4(1.0);
-    bool castShadow = false, useDepthMask=true, cullBack=false, deferred=true, instanced=false;
+    bool castShadow = false, useDepthMask=true, cullBack=false, deferred=true, instanced=false, editorOnly=false;
     Material* material;
     int instances;
 }; 
 
 struct AURORA_API RenderMgr {
-    static void InitGraphicsDevice();
+    static void InitGraphicsDevice(string windowName, unsigned windowWidth, unsigned windowHeight);
     static void UpdateGraphicsDevice();
     static void DestroyGraphicsDevice();
     static bool CheckCloseWindow();
@@ -27,6 +27,9 @@ struct AURORA_API RenderMgr {
     static bool CheckMouseInputs();
     static std::vector<RenderData*> renderObjs;
     static float GetDeltaTime();
+    static float GetAspect();
+    static void SwapBuffers();
+    static ImGuiContext* GetIMGUIContext();
 };
 
 struct AURORA_API FrameBuffer {

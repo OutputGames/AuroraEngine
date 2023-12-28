@@ -1,6 +1,7 @@
 #include "model.hpp"
 
 #include "engine/entity.hpp"
+#include "glm/gtx/type_trait.hpp"
 #include "rendering/render.hpp"
 #include "rendering/renderer.hpp"
 
@@ -11,6 +12,14 @@ Material::Material()
 }
 
 void Material::Update()
+{
+    if (shader) {
+        //shader->reload();
+        shader->use();
+    }
+}
+
+void Material::UpdateUniforms()
 {
     if (shader) {
         //shader->reload();
@@ -68,6 +77,14 @@ void Material::Update()
 
         for (std::pair<std::string, Material::UniformData> uniform : uniforms)
         {
+            if (!uniformCache.count(uniform.first))
+            {
+                uniformCache.insert(uniform);
+            } else
+            {
+                if (uniformCache[uniform.first].m4 == uniform.second.m4)
+                    continue;
+            }
             ShaderFactory::PropertyType type = uniform.second.type;
 
             switch (type) {
@@ -102,6 +119,7 @@ void Material::Update()
                 shader->setVec4(uniform.first, uniform.second.v4);
                 break;
             }
+            uniformCache[uniform.first] = uniform.second;
         }
     }
 }
@@ -110,7 +128,10 @@ void Material::LoadFromData(string s)
 {
     json d = json::parse(s);
 
-	LoadShader(Shader::CheckIfExists(d["shader"]));
+
+    bool isFact = d["isFactory"];
+
+    LoadShader(Shader::CheckIfExists(d["shader"], isFact));
 
     auto unifs = d["uniforms"].get<json::object_t>();
 
@@ -162,6 +183,7 @@ string Material::Export()
 
     m["uniforms"] = mu;
     m["shader"] = shader->shaderDirectory;
+    m["isFactory"] = shader->isFactoryShader;
 
     return m.dump(JSON_INDENT_AMOUNT);
 }

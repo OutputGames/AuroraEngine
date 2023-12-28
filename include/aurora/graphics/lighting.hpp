@@ -16,10 +16,10 @@ public:
 
     PointLight() = default;
 
-    void Init() override;
-    void Update() override;
-    void Unload() override;
-    void EngineRender() override;
+    AURORA_API void Init() override;
+    AURORA_API void Update() override;
+    AURORA_API void Unload() override;
+    AURORA_API void EngineRender() override;
 
 
     vec3 color;
@@ -30,20 +30,17 @@ public:
 
 	std::string icon = ICON_FA_LIGHTBULB;
 
-    std::string GetIcon() override;
-    std::string PrintToJSON() override;
-    void LoadFromJSON(json data) override;
+    AURORA_API std::string GetIcon() override;
+    AURORA_API std::string PrintToJSON() override;
+    AURORA_API void LoadFromJSON(json data) override;
 
     void CalcShadowMap(int prebuffer);
 
-private:
-    friend LightingMgr;
-
     unsigned int shadowMap;
     unsigned int depthMapFBO;
-    unsigned int matricesUBO;
+    //unsigned int matricesUBO;
 
-    float near_plane = 0.01f, far_plane = 10000.0f;
+    float near_plane = 1.0f, far_plane = 75.0f;
 
     vector<mat4> spaceMatrices;
     mat4 spaceMatrix;
@@ -59,16 +56,14 @@ public:
 
     Skybox() = default;
 
-    void Init() override;
-    void Update() override;
-    void EngineRender() override;
+    AURORA_API void Init() override;
+    AURORA_API void Update() override;
+    AURORA_API void EngineRender() override;
 
-    void LoadTexture(std::string path);
+    AURORA_API void LoadTexture(std::string path);
 
-    std::string PrintToJSON() override;
-    void LoadFromJSON(json data) override;
-private:
-    friend LightingMgr;
+    AURORA_API std::string PrintToJSON() override;
+    AURORA_API void LoadFromJSON(json data) override;
 
     CubemapTexture cubemap_texture;
 
@@ -76,15 +71,37 @@ private:
     unsigned int prefilterMap;
 };
 
+struct DeferredLightingData
+{
+    GLuint gBuffer;
+    GLuint gPos, gNrm, gAlb, gSha, gTrm;
+
+    DeferredLightingData(int w, int h);
+
+    void Resize(vec2 size);
+
+    void Generate(int w, int h);
+
+    vec2 size;
+
+};
+
+struct LightingSettings
+{
+    bool renderNonDeferredObjects = true;
+};
+
 struct LightingMgr {
 	std::vector<PointLight*> lights;
     Skybox* sky=nullptr;
 	void EditMaterial(Material* material);
 	void RemoveLight(PointLight* light);
-    unsigned int GetGeometryBuffer();
-    void UpdateGeometryBuffer(vec3 viewPos, unsigned prebuffer, mat4 v = mat4(0.0), vec3 vp = vec3(0.0), mat4 p=mat4(0.0));
-    void ResizeGeometryBuffer(vec2 size);
     void Unload();
+
+    static GLuint GetBRDFTexture();
+
+    LightingSettings* settings=new LightingSettings;
+
 private:
     unsigned int gBuffer=0;
     unsigned int gPosition, gNormal, gAlbedoSpec, gCombined;

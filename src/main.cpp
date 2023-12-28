@@ -2,15 +2,20 @@
 
 #include "aurora/aurora.hpp"
 #include "engine/assets/processor.hpp"
+#include "ui/imgui-layer.hpp"
 #include "utils/timer.hpp"
 
 int main() {
 
     InitEngine();
 
-    
+    ImguiLayer* layer = new ImguiLayer;
 
-    //Project::Create("C:/Users/chris/Downloads/testproj");
+    layer->InitLayer();
+
+    InitScriptEngine();
+
+    Project::Create("C:/Users/chris/Downloads/testproj/");
         
     while (!RenderMgr::CheckCloseWindow()) {
         if (Project::ProjectLoaded()) {
@@ -22,6 +27,8 @@ int main() {
             }
         }
         RenderMgr::UpdateGraphicsDevice();
+        layer->UpdateLayer();
+        RenderMgr::SwapBuffers();
     }
 
     RenderMgr::DestroyGraphicsDevice();

@@ -21,8 +21,8 @@ class Component;
 //****************
 #define CLASS_DECLARATION( classname )                                                      \
 public:                                                                                     \
-    static const std::size_t Type;                                                          \
-    virtual bool IsClassType( const std::size_t classType ) const override;                 \
+    inline static const std::size_t Type = std::hash<const char*>()(TO_STRING( classname ));;                                                          \
+    AURORA_API virtual bool IsClassType( const std::size_t classType ) const override;                 \
     virtual std::shared_ptr<Component> clone() const override                               \
 	{                                                                                       \
     return std::make_shared<classname>(*this);                                              \
@@ -37,7 +37,6 @@ public:                                                                         
 // incorrect. Only works on single-inheritance RTTI.
 //****************
 #define CLASS_DEFINITION( parentclass, childclass )                                         \
-const std::size_t childclass::Type = std::hash< const char* >()( TO_STRING( childclass ) ); \
 bool childclass::IsClassType( const std::size_t classType ) const {                         \
         if ( classType == childclass::Type )                                                \
             return true;                                                                    \
@@ -100,17 +99,47 @@ struct AURORA_API Entity
 
     bool enabled;
 
-    template <class CompType, typename... Args>
-    CompType* AttachComponent(Args&&... params);
-
     template< class ComponentType >
-    inline ComponentType* GetComponent() {
+    ComponentType* GetComponent()
+    {
         for (auto&& component : components) {
             if (component->IsClassType(ComponentType::Type))
                 return static_cast<ComponentType*>(component.get());
         }
 
         return static_cast<ComponentType*>(nullptr);
+    }
+
+    template <class CompType, typename... Args>
+    CompType* AttachComponent(Args&&... params)
+    {
+
+        CompType* c = GetComponent<CompType>();
+
+        if (!GetComponent<CompType>()) {
+            auto cc = components.emplace_back(make_shared< CompType >(forward< Args >(params)...));
+            auto sc = static_cast<CompType*>(cc.get());;
+
+            sc->entity = this;
+
+            return sc;
+
+            /*
+            for (auto&& component : components) {
+                if (component->IsClassType(cc->Type)) {
+                    CompType* comp = static_cast<CompType*>(component.get());
+                    comp->entity = this;
+                    c = comp;
+                    return comp;
+                } else
+                {
+                    cout << component->GetName() << " is not " << cc->GetName() << endl;
+                }
+            }
+            */
+        }
+
+        return static_cast<CompType*>(nullptr);
     }
 
     template< class ComponentType >
@@ -138,11 +167,6 @@ struct AURORA_API Entity
     void Init();
 
     void SetParent(Entity* e);
-
-    static void DrawTree(Entity* n);
-
-    static bool selectedEntity;
-    static int selected_id;
 
     Material* material;
 
@@ -177,29 +201,14 @@ private:
 
     bool treeopen=false;
 
+
     void Update();
+    void LateUpdate();
 };
 
-template <class CompType, typename ... Args>
-CompType* Entity::AttachComponent(Args&&... params)
-{
-    if (!GetComponent<CompType>()) {
-        components.emplace_back(make_shared< CompType >(forward< Args >(params)...));
-        for (auto&& component : components) {
-            if (component->IsClassType(CompType::Type)) {
-                CompType* comp = static_cast<CompType*>(component.get());
-                comp->entity = this;
-                return comp;
-            }
-        }
-    }
-
-    return static_cast<CompType*>(nullptr);
-}
-
-class Component {
+class AURORA_API Component {
 public:
-    static const std::size_t                    Type;
+     inline static const std::size_t                    Type = std::hash<const char*>()(TO_STRING(Component));;
     virtual bool                                IsClassType(const std::size_t classType) const {
         return classType == Type;
     }
@@ -216,7 +225,7 @@ public:
 
     Component() = default;
 
-    virtual void imgui_properties() {};
+	virtual void imgui_properties() {};
 
     inline virtual std::string GetName() {
 
@@ -236,14 +245,15 @@ public:
     std::string                             value = "uninitialized";
 	std::string icon=ICON_FA_GEARS;
 
-    virtual void Init();
-    virtual void Update();
-    virtual void Unload();
-    virtual void SetEnabled(bool enb);
-    virtual void EngineRender();
-    virtual std::string PrintToJSON();
-    virtual void LoadFromJSON(nlohmann::json data);
-    virtual std::string GetIcon();
+	virtual void Init();
+	virtual void Update();
+	virtual void LateUpdate();
+	virtual void Unload();
+	virtual void SetEnabled(bool enb);
+	virtual void EngineRender();
+	virtual std::string PrintToJSON();
+	virtual void LoadFromJSON(nlohmann::json data);
+	virtual std::string GetIcon();
 
 public:
     Entity* entity;
@@ -287,7 +297,7 @@ struct AURORA_API Scene
     string ToString();
     void LoadScene(string s);
     std::string SaveScene();
-    static Scene* GetScene();
+	static Scene* GetScene();
     static Scene* LoadScene(std::string s, bool isNew);
     static Scene* LoadScenePath(string path);
     static Scene* CreateScene(std::string s);

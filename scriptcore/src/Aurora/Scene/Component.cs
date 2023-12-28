@@ -35,4 +35,16 @@ namespace Aurora
 
     }
 
+    public class ParticleEmitter : Component {
+
+    }
+
+    public class Animator : Component {
+
+    }
+
+    public class Camera : Component {
+        static Camera Main;
+    }
+
 }

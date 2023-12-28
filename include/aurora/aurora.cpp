@@ -39,8 +39,7 @@ void InitEngine()
 
     RegisterComponent(ComponentRegistry::RegisteredComponents());
 
-    RenderMgr::InitGraphicsDevice();
-    MonoRuntime::Initialize();
+    RenderMgr::InitGraphicsDevice("AuroraEngine", 1600, 1200);
 
     //Project* p = Project::Create("C:/Users/chris/Downloads/TestProject");
 
@@ -94,4 +93,10 @@ void InitEngine()
 
     }
     */
+}
+
+void InitScriptEngine()
+{
+
+    MonoRuntime::Initialize();
 }

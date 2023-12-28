@@ -14,6 +14,7 @@ project "AuroraRuntime"
 
    files { "include/**.h", "include/**.hpp", "include/**.cpp", "include/**.c","src/**.h", "src/**.hpp" }
    removefiles {"vendor/**"}
+   removefiles { "include/auroraengine/**"}
    --files {"include/bullet3/src/**.hpp", "include/bullet3/src/**.h"}
 
 

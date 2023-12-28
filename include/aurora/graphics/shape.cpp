@@ -1,13 +1,9 @@
 #include "shape.hpp"
 
-
-void ShapeMgr::DrawQuad()
+unsigned int quadVAO = 0;
+unsigned int quadVBO, quadEBO;
+void renderQuad()
 {
-
-    static unsigned int quadVAO = 0;
-    static unsigned int quadVBO;
-    static unsigned int quadEBO;
-
 	if (quadVAO == 0)
 	{
 		float vertices[] = {
@@ -46,4 +42,10 @@ void ShapeMgr::DrawQuad()
 	glBindVertexArray(quadVAO);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
+}
+
+
+void ShapeMgr::DrawQuad()
+{
+	renderQuad();
 }

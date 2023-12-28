@@ -30,9 +30,9 @@ public:
 
 	RigidBody3D() = default;
 
-	void Init() override;
+	AURORA_API void Init() override;
 
-	void Update() override;
+	AURORA_API void Update() override;
 
 private:
 };
@@ -48,9 +48,9 @@ public:
 
 	StaticBody3D() = default;
 
-	void Init() override;
+	AURORA_API void Init() override;
 
-	void Update() override;
+	AURORA_API void Update() override;
 
 private:
 };

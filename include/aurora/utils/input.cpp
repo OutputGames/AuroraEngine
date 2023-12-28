@@ -7,6 +7,9 @@ float lastX;
 float lastY;
 bool firstMouse = true;
 
+vec2 MousePos;
+vec2 MouseDelta;
+
 struct InputData
 {
     vector<int> lastKeysPressed;
@@ -43,25 +46,58 @@ InputData* prevInputData;
 
 bool Engine::InputMgr::IsKeyUp(int key)
 {
-	return (prevInputData->keysPressedContains(key) == false);
+	return !ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
 }
 
 bool Engine::InputMgr::IsKeyDown(int key)
 {
-	return (prevInputData->keysPressedContains(key));
+	return ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
 }
 
 bool Engine::InputMgr::IsKeyPressed(int key)
 {
-	if (!IsKeyDown(key) && prevInputData->lastkeysPressedContains(key))
-	{
-		return true;
-	}
-	return  false;
+	return ImGui::IsKeyPressed(static_cast<ImGuiKey>(key));
+}
+
+bool Engine::InputMgr::IsMouseButtonPressed(int button)
+{
+	return ImGui::IsMouseClicked(button);
+}
+
+bool Engine::InputMgr::IsMouseButtonDown(int button)
+{
+	return ImGui::IsMouseDown(button);
+}
+
+bool Engine::InputMgr::IsMouseButtonUp(int button)
+{
+	return !ImGui::IsMouseDown(button);
+}
+
+
+vec2 Engine::InputMgr::GetMousePos()
+{
+	return MousePos;
+}
+
+vec2 Engine::InputMgr::GetMouseDelta()
+{
+	return MouseDelta;
 }
 
 void Engine::InputMgr::Update()
 {
+
+	double mx, my;
+
+	glfwGetCursorPos(GetWindow(), &mx, &my);
+
+	vec2 initialMousePos = MousePos;
+
+	MousePos = { mx,my };
+
+	MouseDelta = MousePos - initialMousePos;
+
 	prevInputData->lastKeysPressed = prevInputData->keysPressed;
 	prevInputData->keysPressed.clear();
 }

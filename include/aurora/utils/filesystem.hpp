@@ -4,12 +4,12 @@
 #include "utils.hpp"
 
 struct Filesystem {
-    static std::string ReadFileString(std::string path);
-    static bool WriteFileString(string path, string data);
-    static char* ReadFileBytes(string path, int& dataSize);
-    static void DeleteFile(string path);
-    static std::string GetCurrentDir();
-    static void CopyRecursive(const filesystem::path& src, const filesystem::path& target) noexcept
+    AURORA_API static std::string ReadFileString(std::string path);
+    AURORA_API static bool WriteFileString(string path, string data);
+    AURORA_API static char* ReadFileBytes(string path, int& dataSize);
+    AURORA_API static void DeleteFile(string path);
+    AURORA_API static std::string GetCurrentDir();
+    AURORA_API static void CopyRecursive(const filesystem::path& src, const filesystem::path& target) noexcept
     {
         try
         {
@@ -20,13 +20,13 @@ struct Filesystem {
             std::cout << e.what();
         }
     }
-    static void CreateFile(string path)
+    AURORA_API static void CreateFile(string path)
     {
         ofstream file(path);
 
         file.close();
     }
-    static string ReplaceOccurences(std::string str, const std::string& from, const std::string& to);
+    AURORA_API static string ReplaceOccurences(std::string str, const std::string& from, const std::string& to);
 };
 
 #endif

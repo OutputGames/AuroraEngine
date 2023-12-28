@@ -66,69 +66,17 @@ public:
     map<string, string> tags;
     map<string, ShaderFactory::Property*> properties;
 
-    static unordered_map<string, Shader*> loadedShaders;
+    AURORA_API static unordered_map<string, Shader*> GetLoadedShaders();
 
     // constructor generates the shader on the fly
     // ------------------------------------------------------------------------
-    Shader(std::string shaderDirectory, bool useGeometry = false, bool logShader=true)
-    {
+    AURORA_API Shader(std::string shaderDirectory, bool useGeometry = false, bool logShader=true);
 
-        std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
+    AURORA_API Shader(const char* path, bool overwrite);
 
-        string shaderDir = filesystem::path(shaderDirectory).string();
+    AURORA_API static Shader* CheckIfExists(string shaderDirectory, bool isFactory=false);
 
-        if (!loadedShaders.count(shaderDir)) {
-            this->shaderDirectory = shaderDir;
-            this->useGeometry = useGeometry;
-            this->reload();
-            if (logShader) {
-                loadedShaders.insert({ shaderDir, this });
-            }
-
-            name = shaderDir;
-
-        } else
-        {
-            Shader* preloadedShader = loadedShaders[shaderDir];
-
-            //cout << preloadedShader->ID;
-
-            //Logger::Log("got preloaded shader: " + preloadedShader->name + " with id: " + to_string(preloadedShader->ID));
-
-            this->ID = preloadedShader->ID;
-            this->shaderDirectory = preloadedShader->shaderDirectory;
-            this->name = preloadedShader->name;
-            this->useGeometry = preloadedShader->useGeometry;
-        }
-    }
-
-    Shader(const char* path, bool overwrite);
-
-    static Shader* CheckIfExists(string shaderDirectory)
-    {
-        std::replace(shaderDirectory.begin(), shaderDirectory.end(), '/', '\\');
-
-        string shaderDir = filesystem::path(shaderDirectory).string();
-
-        if (!loadedShaders.count(shaderDir)) {
-            return new Shader(shaderDir);
-        }
-        else
-        {
-            Shader* preloadedShader = loadedShaders[shaderDir];
-
-            return preloadedShader;
-        }
-    }
-
-    static void UnloadAllShaders()
-    {
-	    for (auto loaded_shader : loadedShaders)
-	    {
-            glDeleteProgram(loaded_shader.second->ID);
-	    }
-        loadedShaders.clear();
-    }
+    AURORA_API static void UnloadAllShaders();
 
     void loadSource(std::string vertexCode, std::string fragmentCode, std::string geometryCode)
     {
@@ -176,16 +124,7 @@ public:
             glDeleteShader(geometry);
     }
 
-    static void ReloadAllShaders()
-    {
-	    for (pair<const string, Shader*> loaded_shader : loadedShaders)
-	    {
-		    if (loaded_shader.second)
-		    {
-                loaded_shader.second->reload();
-		    }
-	    }
-    }
+    static void ReloadAllShaders();
 
     static string CreateShader();
 

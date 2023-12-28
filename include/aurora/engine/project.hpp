@@ -25,6 +25,7 @@ struct AURORA_API Project
     AssetProcessor* processor;
 
     string GetAssetPath() { return assetPath; }
+    string GetPath() { return assetPath + "./"; };
 
 private:
     friend Scene;

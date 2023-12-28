@@ -5,7 +5,7 @@
 #include "engine/entity.hpp"
 #include "rendering/renderer.hpp"
 
-struct Camera;
+struct CameraBase;
 
 class Billboard : public Component {
     CLASS_DECLARATION(Billboard)
@@ -32,7 +32,10 @@ public:
 
     vec3 color;
 
+    bool showInEditorOnly = false;
+
 private:
+
     Mesh* mesh;
 };
 

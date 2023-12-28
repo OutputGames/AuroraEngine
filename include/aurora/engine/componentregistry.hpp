@@ -10,13 +10,14 @@
 #include "physics/physics.hpp"
 #include "runtime/scriptcomponent.hpp"
 #include <graphics/animation.hpp>
+#include <rendering/camera.hpp>
 
 struct AURORA_API ComponentRegistry
 {
     template<typename T> static std::shared_ptr<Component> createInstance() { return make_shared< T >(); }
 
     //typedef std::map<std::string, Component* (*)()> map_type;
-    static std::map<std::string, std::shared_ptr<Component>(*)()> cmp_map;
+    inline static std::map<std::string, std::shared_ptr<Component>(*)()> cmp_map= std::map<std::string, std::shared_ptr<Component>(*)()>();;
 
 
     template <typename... C>
@@ -25,7 +26,7 @@ struct AURORA_API ComponentRegistry
 
     };
 
-    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent, RigidBody3D, ParticleEmitter, Animator>;
+    using RegisteredComponents = ComponentRegister<Billboard, PointLight, MeshRenderer, Skybox, ScriptComponent, ParticleEmitter, Animator, Camera>;
     
 };
 

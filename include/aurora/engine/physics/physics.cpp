@@ -3,6 +3,16 @@
 CLASS_DEFINITION(Component, RigidBody3D)
 CLASS_DEFINITION(Component, StaticBody3D)
 
+void StaticBody3D::Init()
+{
+
+}
+
+void StaticBody3D::Update()
+{
+
+}
+
 void PhysicsFactory::Init()
 {
 }
